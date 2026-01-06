@@ -1,0 +1,10 @@
+# uploads ディレクトリ設定
+# PHPファイルの実行を禁止
+<FilesMatch "\.php$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# 直接アクセスを禁止（APIを通じてのみダウンロード可能）
+Order Allow,Deny
+Deny from all

@@ -1,0 +1,3 @@
+# utils ディレクトリへのアクセスを禁止
+Order Allow,Deny
+Deny from all
