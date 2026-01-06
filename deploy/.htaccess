@@ -1,53 +1,28 @@
 # ファイルマネージャー .htaccess
-# Xserver用設定
 
-# 文字エンコーディング
 AddDefaultCharset UTF-8
-
-# PHP設定
-php_value upload_max_filesize 50M
-php_value post_max_size 55M
-php_value max_execution_time 300
-php_value max_input_time 300
-php_value memory_limit 256M
 
 # CORS設定
 <IfModule mod_headers.c>
     Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
     Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-API-Token"
-    Header always set Access-Control-Max-Age "3600"
 </IfModule>
 
-# OPTIONSリクエスト（プリフライト）対応
+# OPTIONSリクエスト対応
 RewriteEngine On
 RewriteCond %{REQUEST_METHOD} OPTIONS
 RewriteRule ^(.*)$ $1 [R=200,L]
 
-# セキュリティ - 設定ファイルへの直接アクセスを禁止
+# セキュリティ
 <FilesMatch "^(database\.php|auth\.php|validation\.php)$">
     Order Allow,Deny
     Deny from all
 </FilesMatch>
 
-# ディレクトリ一覧表示を禁止
 Options -Indexes
 
-# .envファイルへのアクセスを禁止
 <Files ".env">
     Order Allow,Deny
     Deny from all
 </Files>
-
-# ログファイルへのアクセスを禁止
-<FilesMatch "\.(log)$">
-    Order Allow,Deny
-    Deny from all
-</FilesMatch>
-
-# エラーハンドリング
-ErrorDocument 400 /api/error.php?code=400
-ErrorDocument 401 /api/error.php?code=401
-ErrorDocument 403 /api/error.php?code=403
-ErrorDocument 404 /api/error.php?code=404
-ErrorDocument 500 /api/error.php?code=500
