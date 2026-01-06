@@ -1,6 +1,11 @@
 # ファイルマネージャー .htaccess
-
 AddDefaultCharset UTF-8
+
+# Authorizationヘッダーを環境変数として渡す（CGI/FastCGI対応）
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+RewriteEngine On
+RewriteCond %{HTTP:Authorization} ^(.*)
+RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
 
 # CORS設定
 <IfModule mod_headers.c>
@@ -10,19 +15,28 @@ AddDefaultCharset UTF-8
 </IfModule>
 
 # OPTIONSリクエスト対応
-RewriteEngine On
 RewriteCond %{REQUEST_METHOD} OPTIONS
 RewriteRule ^(.*)$ $1 [R=200,L]
+
+# 実在するファイルやディレクトリはそのまま
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+# APIリクエストは除外
+RewriteCond %{REQUEST_URI} !^/api/
+# それ以外はindex.htmlへ（SPA対応）
+RewriteRule ^.*$ /index.html [L]
 
 # セキュリティ
 <FilesMatch "^(database\.php|auth\.php|validation\.php)$">
     Order Allow,Deny
     Deny from all
 </FilesMatch>
-
 Options -Indexes
-
 <Files ".env">
     Order Allow,Deny
     Deny from all
 </Files>
+
+# HTTPS強制
+RewriteCond %{HTTPS} !on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
