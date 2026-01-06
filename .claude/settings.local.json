@@ -16,7 +16,8 @@
       "Bash(~/.ssh/xserver_rsa.pub)",
       "Bash(~/.ssh/config)",
       "Bash(ssh:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(curl -s -X POST http://kohinata3.xsrv.jp/api/auth/login.php )"
     ]
   }
 }
