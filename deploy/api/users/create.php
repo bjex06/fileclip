@@ -102,15 +102,6 @@ try {
     // パスワードハッシュ化
     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
-    // UUID生成
-    $userId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
-        mt_rand(0, 0xffff),
-        mt_rand(0, 0x0fff) | 0x4000,
-        mt_rand(0, 0x3fff) | 0x8000,
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
-    );
-
     // 営業所存在チェック
     if ($branchId) {
         $stmt = $pdo->prepare("SELECT id FROM branches WHERE id = ? AND is_active = 1");
@@ -129,12 +120,13 @@ try {
         }
     }
 
-    // ユーザー作成
+    // ユーザー作成（AUTO_INCREMENT使用）
     $stmt = $pdo->prepare("
-        INSERT INTO users (id, email, name, password_hash, role, branch_id, department_id, position, employee_code, is_active, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())
+        INSERT INTO users (email, name, password_hash, role, branch_id, department_id, position, employee_code, is_active, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())
     ");
-    $stmt->execute([$userId, $email, $name, $passwordHash, $role, $branchId, $departmentId, $position, $employeeCode]);
+    $stmt->execute([$email, $name, $passwordHash, $role, $branchId, $departmentId, $position, $employeeCode]);
+    $userId = $pdo->lastInsertId();
 
     // アクティビティログ
     $logStmt = $pdo->prepare("
