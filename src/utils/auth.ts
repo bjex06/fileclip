@@ -56,7 +56,11 @@ export const verifyToken = (token: string): { id: string; email: string; name: s
     const payload = JSON.parse(payloadStr);
 
     // 期限チェック
-    if (payload.exp < Date.now()) {
+    // PHPは秒単位、JavaScriptはミリ秒単位でexpを生成するため、
+    // 桁数で判断して適切に比較する（秒: 10桁、ミリ秒: 13桁）
+    const now = Date.now();
+    const expMs = payload.exp < 10000000000000 ? payload.exp * 1000 : payload.exp;
+    if (expMs < now) {
       return null;
     }
 
