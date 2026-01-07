@@ -32,11 +32,11 @@ try {
     
     $input = json_decode(file_get_contents('php://input'), true);
     
-    if (!$input || !isset($input['user_id'])) {
+    if (!$input || (!isset($input['user_id']) && !isset($input['id']))) {
         throw new Exception('ユーザーIDが必要です');
     }
-    
-    $userId = $input['user_id'];
+
+    $userId = $input['user_id'] ?? $input['id'];
     
     if (!isValidId($userId)) {
         throw new Exception('無効なユーザーIDです');
@@ -59,7 +59,8 @@ try {
     }
     
     // 管理者を削除しようとしているかチェック
-    if ($targetUser['role'] === 'admin') {
+    $protectedRoles = ['admin', 'super_admin'];
+    if (in_array($targetUser['role'], $protectedRoles)) {
         throw new Exception('管理者ユーザーは削除できません');
     }
     
@@ -70,14 +71,10 @@ try {
         // ユーザーに関連するフォルダ権限を削除
         $stmt = $pdo->prepare("DELETE FROM folder_permissions WHERE user_id = ?");
         $stmt->execute([$userId]);
-        
-        // ユーザーを論理削除（is_active = 0）
-        $stmt = $pdo->prepare("UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = ?");
+
+        // ユーザーを物理削除
+        $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
         $stmt->execute([$userId]);
-        
-        // または物理削除する場合：
-        // $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
-        // $stmt->execute([$userId]);
         
         $pdo->commit();
         
