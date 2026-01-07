@@ -27,7 +27,8 @@ try {
     $payload = authenticateRequest();
 
     // 管理者権限チェック
-    if ($payload['role'] !== 'admin') {
+    $adminRoles = ['admin', 'super_admin', 'branch_admin', 'department_admin'];
+    if (!in_array($payload['role'], $adminRoles)) {
         throw new Exception('管理者権限が必要です');
     }
 
@@ -78,12 +79,8 @@ try {
             $stmt->execute([$deptId]);
         }
 
-        // 部署を削除（物理削除）または無効化
-        if (isset($input['hardDelete']) && $input['hardDelete']) {
-            $stmt = $pdo->prepare("DELETE FROM departments WHERE id = ?");
-        } else {
-            $stmt = $pdo->prepare("UPDATE departments SET is_active = 0 WHERE id = ?");
-        }
+        // 部署を物理削除
+        $stmt = $pdo->prepare("DELETE FROM departments WHERE id = ?");
         $stmt->execute([$deptId]);
 
         // アクティビティログ
