@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Download, File as FileIcon, Image, FileText, Video, FileSpreadsheet, AlertCircle, Loader } from 'lucide-react';
 import { File } from '../../types';
 import { useFileSystem } from '../../context/FileSystemContext';
+import Papa from 'papaparse';
+import * as mammoth from 'mammoth';
+import { read, utils, WorkBook } from 'xlsx';
 
 interface FilePreviewModalProps {
     file: File;
@@ -23,14 +26,132 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
     const { getFileDataUrl, downloadFile } = useFileSystem();
     const [dataUrl, setDataUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [previewContent, setPreviewContent] = useState<string | null>(null);
+    const [previewError, setPreviewError] = useState<string | null>(null);
 
-    // Get file data URL
+    // Excel specific state
+    const [workbook, setWorkbook] = useState<WorkBook | null>(null);
+    const [sheetNames, setSheetNames] = useState<string[]>([]);
+    const [currentSheet, setCurrentSheet] = useState<string | null>(null);
+
+    const isImage = file.type === 'image' || file.name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
+    const isVideo = file.type === 'video' || file.name.match(/\.(mp4|mov|avi|wmv|flv|mkv|webm)$/i);
+    const isPdf = file.type === 'pdf' || file.name.match(/\.pdf$/i);
+    const isDocx = file.name.match(/\.docx$/i);
+    const isDoc = file.type === 'word' || file.name.match(/\.doc$/i); // Includes .doc and .docx broadly, but we separate for mammoth
+    const isDocument = isDocx; // Only preview docx
+    const isSpreadsheet = file.type === 'excel' || file.name.match(/\.(xls|xlsx|csv)$/i);
+    const isCsv = file.name.match(/\.csv$/i);
+
+    // Get file data URL and content
     useEffect(() => {
+        let isMounted = true;
         setLoading(true);
-        const url = getFileDataUrl(file.id);
-        setDataUrl(url);
-        setLoading(false);
+        setPreviewContent(null);
+        setPreviewError(null);
+        setWorkbook(null);
+        setSheetNames([]);
+        setCurrentSheet(null);
+
+        const loadContent = async () => {
+            const url = getFileDataUrl(file.id);
+            if (!url) {
+                if (isMounted) {
+                    setDataUrl(null);
+                    setLoading(false);
+                }
+                return;
+            }
+
+            if (isMounted) setDataUrl(url);
+
+            if (isDocument || isSpreadsheet) {
+                // Check file size for expensive operations (5MB limit)
+                const MAX_PREVIEW_SIZE = 5 * 1024 * 1024;
+                if (file.size > MAX_PREVIEW_SIZE) {
+                    if (isMounted) {
+                        setPreviewError('ファイルサイズが大きすぎるためプレビューできません（5MB制限）');
+                        setLoading(false);
+                    }
+                    return;
+                }
+
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+                    const blob = await response.blob();
+
+                    if (isCsv) {
+                        const text = await blob.text();
+                        Papa.parse(text, {
+                            complete: (results) => {
+                                if (isMounted) {
+                                    // Generate simple table HTML
+                                    const rows = results.data;
+                                    let html = '<div class="overflow-auto max-h-full"><table class="min-w-full border-collapse border border-gray-300 bg-white text-sm">';
+                                    rows.forEach((row: any, i) => {
+                                        html += '<tr>';
+                                        if (Array.isArray(row)) {
+                                            row.forEach((cell: any) => {
+                                                html += `<td class="border border-gray-300 p-2 ${i === 0 ? 'bg-gray-100 font-medium' : ''}">${cell}</td>`;
+                                            });
+                                        }
+                                        html += '</tr>';
+                                    });
+                                    html += '</table></div>';
+                                    setPreviewContent(html);
+                                }
+                            },
+                            error: (err: Error) => {
+                                console.error('CSV Parse Error:', err);
+                                if (isMounted) setPreviewError('CSVの読み込みに失敗しました');
+                            }
+                        });
+                    } else if (isDocument) {
+                        const arrayBuffer = await blob.arrayBuffer();
+                        const result = await mammoth.convertToHtml({ arrayBuffer });
+                        if (isMounted) setPreviewContent(result.value);
+                    } else if (isSpreadsheet) { // Excel
+                        const arrayBuffer = await blob.arrayBuffer();
+                        const wb = read(arrayBuffer);
+                        if (isMounted) {
+                            setWorkbook(wb);
+                            setSheetNames(wb.SheetNames);
+                            if (wb.SheetNames.length > 0) {
+                                setCurrentSheet(wb.SheetNames[0]);
+                                // Initial render of first sheet
+                                const worksheet = wb.Sheets[wb.SheetNames[0]];
+                                const html = utils.sheet_to_html(worksheet, { id: 'excel-preview', header: '' });
+                                setPreviewContent(html);
+                            } else {
+                                setPreviewContent('<p>シートが見つかりませんでした</p>');
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Preview generation failed:', error);
+                    if (isMounted) setPreviewError('プレビューの生成に失敗しました');
+                }
+            }
+
+            if (isMounted) setLoading(false);
+        };
+
+        loadContent();
+
+        return () => {
+            isMounted = false;
+        };
     }, [file.id, getFileDataUrl]);
+
+    // Update spreadsheet content when sheet changes
+    useEffect(() => {
+        if (workbook && currentSheet) {
+            const worksheet = workbook.Sheets[currentSheet];
+            const html = utils.sheet_to_html(worksheet, { id: 'excel-preview', header: '' });
+            setPreviewContent(html);
+        }
+    }, [currentSheet, workbook]);
 
     // Prevent body scroll when modal is open
     useEffect(() => {
@@ -52,12 +173,6 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose, onNext, onPrev, hasNext, hasPrev]);
 
-    const isImage = file.type === 'image' || file.name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
-    const isVideo = file.type === 'video' || file.name.match(/\.(mp4|mov|avi|wmv|flv|mkv|webm)$/i);
-    const isPdf = file.type === 'pdf' || file.name.match(/\.pdf$/i);
-    const isDocument = file.type === 'word' || file.name.match(/\.(doc|docx)$/i);
-    const isSpreadsheet = file.type === 'excel' || file.name.match(/\.(xls|xlsx)$/i);
-
     const formatFileSize = (bytes: number) => {
         if (bytes === 0) return '0 B';
         const k = 1024;
@@ -70,7 +185,7 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
         if (isImage) return <Image size={48} className="text-purple-400" />;
         if (isVideo) return <Video size={48} className="text-orange-400" />;
         if (isPdf) return <FileText size={48} className="text-red-400" />;
-        if (isDocument) return <FileText size={48} className="text-blue-400" />;
+        if (isDocument || isDoc) return <FileText size={48} className="text-blue-400" />;
         if (isSpreadsheet) return <FileSpreadsheet size={48} className="text-green-400" />;
         return <FileIcon size={48} className="text-gray-400" />;
     };
@@ -113,7 +228,7 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
             );
         }
 
-        // PDF preview (using iframe for data URL)
+        // PDF preview
         if (isPdf && dataUrl) {
             return (
                 <iframe
@@ -124,7 +239,79 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
             );
         }
 
-        // Fallback for unsupported types or missing data
+        // Legacy Word (.doc) warning
+        if (isDoc && !isDocx) {
+            return (
+                <div className="w-64 h-64 sm:w-80 sm:h-80 bg-gray-800/80 backdrop-blur rounded-2xl flex flex-col items-center justify-center text-gray-400 p-6 sm:p-8">
+                    <FileText size={48} className="text-blue-400 mb-4" />
+                    <p className="text-center text-white font-medium">古いWord形式(.doc)</p>
+                    <p className="text-center text-xs mt-2 text-yellow-400">この形式はプレビューできません。<br />ダウンロードしてご確認ください。</p>
+                    <button onClick={handleDownload} className="mt-4 px-4 py-2 bg-[#64D2C3] text-white rounded-lg text-sm">
+                        ダウンロード
+                    </button>
+                </div>
+            );
+        }
+
+        // Document & Spreadsheet HTML Preview
+        if ((isDocument || isSpreadsheet) && previewContent) {
+            return (
+                <div className="w-full h-[70vh] sm:h-[80vh] max-w-5xl rounded-lg bg-white overflow-hidden shadow-2xl flex flex-col">
+                    {/* Warning Header */}
+                    <div className="bg-yellow-50 border-b border-yellow-200 p-2 text-center text-yellow-800 text-xs sm:text-sm flex justify-center items-center gap-2">
+                        <AlertCircle size={14} />
+                        <span>これは簡易プレビューです。正確なレイアウトを確認するには<button onClick={handleDownload} className="underline font-semibold ml-1">ダウンロード</button>してください。</span>
+                    </div>
+
+                    {/* Excel Sheet Tabs */}
+                    {isSpreadsheet && !isCsv && sheetNames.length > 0 && (
+                        <div className="bg-gray-100 border-b border-gray-200 overflow-x-auto whitespace-nowrap px-2 flex gap-1">
+                            {sheetNames.map(sheet => (
+                                <button
+                                    key={sheet}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCurrentSheet(sheet);
+                                    }}
+                                    className={`px-4 py-2 text-sm border-b-2 transition-colors ${currentSheet === sheet
+                                        ? 'border-[#64D2C3] text-[#64D2C3] bg-white'
+                                        : 'border-transparent text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    {sheet}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="flex-1 overflow-auto p-4 sm:p-8">
+                        <div
+                            className="prose max-w-none"
+                            dangerouslySetInnerHTML={{ __html: previewContent }}
+                        />
+                    </div>
+                    <style>{`
+                        table { border-collapse: collapse; min-width: 100%; }
+                        td, th { border: 1px solid #ccc; padding: 4px 8px; white-space: nowrap; }
+                    `}</style>
+                </div>
+            );
+        }
+
+        if ((isDocument || isSpreadsheet) && previewError) {
+            return (
+                <div className="w-64 h-64 sm:w-80 sm:h-80 bg-gray-800/80 backdrop-blur rounded-2xl flex flex-col items-center justify-center text-gray-400 p-6 sm:p-8">
+                    <AlertCircle size={48} className="text-red-400 mb-4" />
+                    <p className="text-center text-white font-medium">プレビューエラー</p>
+                    <p className="text-center text-xs mt-2">{previewError}</p>
+                    <button onClick={handleDownload} className="mt-4 px-4 py-2 bg-[#64D2C3] text-white rounded-lg text-sm">
+                        ダウンロードして確認
+                    </button>
+                </div>
+            );
+        }
+
+        // Fallback
         return (
             <div className="w-64 h-64 sm:w-80 sm:h-80 bg-gray-800/80 backdrop-blur rounded-2xl flex flex-col items-center justify-center text-gray-400 p-6 sm:p-8">
                 <div className="mb-4 p-4 bg-gray-700/50 rounded-full">
@@ -167,17 +354,19 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                 <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                     <button
                         onClick={handleDownload}
-                        className="p-2 sm:p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                        className="p-3 sm:p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors active:bg-white/20"
                         title="ダウンロード"
+                        aria-label="ダウンロード"
                     >
-                        <Download size={18} className="sm:w-5 sm:h-5" />
+                        <Download size={20} className="sm:w-5 sm:h-5" />
                     </button>
                     <button
                         onClick={onClose}
-                        className="p-2 sm:p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                        className="p-3 sm:p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors active:bg-white/20"
                         title="閉じる"
+                        aria-label="閉じる"
                     >
-                        <X size={18} className="sm:w-5 sm:h-5" />
+                        <X size={24} className="sm:w-5 sm:h-5" />
                     </button>
                 </div>
             </div>
@@ -208,7 +397,7 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                 onClick={onClose}
             >
                 <div
-                    className="relative max-w-full max-h-full flex flex-col items-center"
+                    className="relative max-w-full max-h-full flex flex-col items-center w-full"
                     onClick={e => e.stopPropagation()}
                 >
                     {renderPreview()}

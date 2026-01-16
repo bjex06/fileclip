@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -26,13 +26,13 @@ try {
     // 認証チェック
     $payload = authenticateRequest();
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    $isAdmin = isAdminRole($payload['role']);
 
     $pdo = getDatabaseConnection();
 
     // パラメータ
-    $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-    $perPage = isset($_GET['per_page']) ? min(100, max(1, (int)$_GET['per_page'])) : 20;
+    $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+    $perPage = isset($_GET['per_page']) ? min(100, max(1, (int) $_GET['per_page'])) : 20;
     $offset = ($page - 1) * $perPage;
 
     $filterAction = $_GET['action'] ?? null;
@@ -67,7 +67,7 @@ try {
     // 総件数取得
     $countStmt = $pdo->prepare("SELECT COUNT(*) FROM activity_logs al $whereClause");
     $countStmt->execute($params);
-    $totalCount = (int)$countStmt->fetchColumn();
+    $totalCount = (int) $countStmt->fetchColumn();
 
     // ログ取得
     $params[] = $perPage;
@@ -87,7 +87,7 @@ try {
     $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 整形
-    $formattedLogs = array_map(function($log) {
+    $formattedLogs = array_map(function ($log) {
         return [
             'id' => $log['id'],
             'user_id' => $log['user_id'],

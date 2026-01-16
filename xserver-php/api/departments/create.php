@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,9 +27,7 @@ try {
     $payload = authenticateRequest();
 
     // 管理者権限チェック
-    if ($payload['role'] !== 'admin') {
-        throw new Exception('管理者権限が必要です');
-    }
+    requireAdminRole($payload);
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -43,7 +41,7 @@ try {
     $parentId = isset($input['parentId']) ? $input['parentId'] : null;
     $description = isset($input['description']) ? trim($input['description']) : null;
     $managerId = isset($input['managerId']) ? $input['managerId'] : null;
-    $displayOrder = isset($input['displayOrder']) ? (int)$input['displayOrder'] : 0;
+    $displayOrder = isset($input['displayOrder']) ? (int) $input['displayOrder'] : 0;
 
     if (strlen($name) < 1) {
         throw new Exception('部署名を入力してください');
@@ -88,12 +86,16 @@ try {
     }
 
     // UUID生成
-    $deptId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+    $deptId = sprintf(
+        '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
         mt_rand(0, 0xffff),
         mt_rand(0, 0x0fff) | 0x4000,
         mt_rand(0, 0x3fff) | 0x8000,
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff)
     );
 
     // 部署作成

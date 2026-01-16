@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -26,10 +26,28 @@ try {
     // 認証チェック
     $payload = authenticateRequest();
 
+    // DEBUG LOG setup
+    $logFile = '../../logs/debug_list.log';
+    if (!is_dir(dirname($logFile)))
+        mkdir(dirname($logFile), 0755, true);
+
+    function logDebug($msg)
+    {
+        global $logFile;
+        error_log(date('[Y-m-d H:i:s] ') . $msg . "\n", 3, $logFile);
+    }
+    logDebug("List API called. GET Params: " . print_r($_GET, true));
+
     $pdo = getDatabaseConnection();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    $userId = $payload['user_id'];
+
+    // ロールの空白を除去してチェック
+    $userRole = isset($payload['role']) ? trim($payload['role']) : '';
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
+
+    // $isAdmin = true; // 強制的に全表示（デバッグ/要望対応）
     $folderId = isset($_GET['folder_id']) ? $_GET['folder_id'] : null;
 
     // ソート・フィルターパラメータ
@@ -84,8 +102,10 @@ try {
             FROM files f
             LEFT JOIN users u ON f.created_by = u.id
             WHERE $whereClause
+
             ORDER BY f.$sortColumn $sortOrder
         ");
+        logDebug("Executing Admin Query. Params: " . print_r($params, true));
         $stmt->execute($params);
     } else {
         // 一般ユーザーは権限のあるフォルダのファイルのみ
@@ -113,30 +133,30 @@ try {
     }
 
     $files = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // レスポンス用に整形
-    $formattedFiles = array_map(function($file) {
+    $formattedFiles = array_map(function ($file) {
         return [
-            'id' => (string)$file['id'],
+            'id' => (string) $file['id'],
             'name' => $file['name'],
             'type' => $file['type'],
-            'size' => (int)$file['size'],
-            'folder_id' => (string)$file['folder_id'],
-            'created_by' => (string)$file['created_by'],
+            'size' => (int) $file['size'],
+            'folder_id' => (string) $file['folder_id'],
+            'created_by' => (string) $file['created_by'],
             'creator_name' => $file['creator_name'],
             'storage_path' => $file['storage_path'],
             'created_at' => $file['created_at']
         ];
     }, $files);
-    
+
     $response = [
         'status' => 'success',
         'data' => $formattedFiles
     ];
-    
+
     http_response_code(200);
     echo json_encode($response);
-    
+
 } catch (Exception $e) {
     http_response_code(400);
     echo json_encode([

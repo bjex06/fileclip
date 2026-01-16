@@ -51,7 +51,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ user, branches, departmen
       'user': 1,
       'department_admin': 2,
       'branch_admin': 3,
-      'super_admin': 4
+      'super_admin': 4,
+      'admin': 4
     };
 
     const currentLevel = roleHierarchy[currentUserRole] || 1;
@@ -317,8 +318,8 @@ const UserManagementPanel: React.FC = () => {
   }, [session, hasPermission]);
 
   const handleDeleteUser = async (user: { id: string; name: string; role: string }) => {
-    // super_admin は削除不可
-    if (user.role === 'super_admin') {
+    // super_admin は削除不可 (ただし自分がsuper_adminならOK)
+    if (user.role === 'super_admin' && session?.role !== 'super_admin') {
       toast.error('全権管理者は削除できません');
       return;
     }
@@ -449,18 +450,19 @@ const UserManagementPanel: React.FC = () => {
                     {getRoleLabel(user.role as UserRole)}
                   </span>
 
-                  {user.role !== 'super_admin' && canAddUser && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteUser(user);
-                      }}
-                      className="p-2 hover:bg-red-100 rounded text-red-500"
-                      title="削除"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
+                  {/* super_adminの削除: 自分がsuper_adminの場合のみ許可（自分自身はbackendで禁止） */
+                    ((user.role !== 'super_admin') || (session?.role === 'super_admin')) && canAddUser && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteUser(user);
+                        }}
+                        className="p-2 hover:bg-red-100 rounded text-red-500"
+                        title="削除"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                 </div>
               </div>
             );

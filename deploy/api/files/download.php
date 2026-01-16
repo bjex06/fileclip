@@ -2,10 +2,11 @@
 /**
  * ファイルダウンロードAPI
  */
+ob_start();
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -26,23 +27,25 @@ require_once '../../utils/validation.php';
 try {
     // 認証チェック
     $payload = authenticateRequest();
-    
+
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
-    
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
+
     // ファイルID取得
     $fileId = isset($_GET['file_id']) ? $_GET['file_id'] : null;
-    
+
     if (!$fileId) {
         throw new Exception('ファイルIDは必須です');
     }
-    
+
     if (!isValidId($fileId)) {
         throw new Exception('無効なファイルIDです');
     }
-    
+
     $pdo = getDatabaseConnection();
-    
+
     // ファイル情報取得
     $stmt = $pdo->prepare("
         SELECT f.*, fo.id as folder_exists
@@ -52,11 +55,11 @@ try {
     ");
     $stmt->execute([$fileId]);
     $file = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$file) {
         throw new Exception('ファイルが見つかりません');
     }
-    
+
     // 権限チェック（管理者以外）
     if (!$isAdmin) {
         $stmt = $pdo->prepare("
@@ -67,14 +70,14 @@ try {
             throw new Exception('このファイルへのアクセス権限がありません');
         }
     }
-    
+
     // ファイルパス
     $filePath = '../../uploads/' . $file['storage_path'];
-    
+
     if (!file_exists($filePath)) {
         throw new Exception('ファイルが存在しません');
     }
-    
+
     // MIMEタイプの設定
     $mimeTypes = [
         'pdf' => 'application/pdf',
@@ -87,9 +90,9 @@ try {
         'archive' => 'application/zip',
         'other' => 'application/octet-stream'
     ];
-    
+
     $contentType = $mimeTypes[$file['type']] ?? 'application/octet-stream';
-    
+
     // ダウンロードログを記録
     $logDir = '../../logs';
     if (!is_dir($logDir)) {
@@ -99,18 +102,23 @@ try {
     $timestamp = date('Y-m-d H:i:s');
     $logEntry = "[{$timestamp}] User ID: {$userId} downloaded File ID: {$fileId} ({$file['name']})\n";
     file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
-    
+
     // ヘッダー設定
     header('Content-Type: ' . $contentType);
     header('Content-Disposition: attachment; filename="' . rawurlencode($file['name']) . '"');
     header('Content-Length: ' . filesize($filePath));
     header('Cache-Control: no-cache, must-revalidate');
     header('Pragma: no-cache');
-    
+
+    // 不要な出力バッファをクリア
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+
     // ファイル出力
     readfile($filePath);
     exit();
-    
+
 } catch (Exception $e) {
     header('Content-Type: application/json');
     http_response_code(400);
@@ -119,4 +127,3 @@ try {
         'error' => $e->getMessage()
     ]);
 }
-?>

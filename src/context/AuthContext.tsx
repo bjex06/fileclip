@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { authApi, AuthUser, addUserToMockDatabase } from '../utils/authApi';
-import { fileSystemApi } from '../utils/fileSystemApi';
-import { 
+import { authApi, AuthUser } from '../utils/authApi';
+import {
   sessionStorage,
   validatePasswordStrength,
   validateEmail
 } from '../utils/auth';
 import { setGlobalAuthToken } from '../utils/api';
+
 
 interface AuthContextType {
   session: AuthUser | null;
@@ -32,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await refreshSession();
       setLoading(false);
     };
-    
+
     init();
   }, []);
 
@@ -40,23 +40,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const token = sessionStorage.getToken();
       const savedUser = sessionStorage.getUser();
-      
+
       if (token && savedUser) {
         // トークンを設定
         setGlobalAuthToken(token);
-        
+
         // セッションを検証
         const response = await authApi.verifySession(token);
-        
+
         if (response.success && response.data) {
           setSession(response.data);
           sessionStorage.setUser(response.data);
         } else {
-          // トークンが無効な場合はクリア
-          sessionStorage.removeToken();
-          sessionStorage.removeUser();
-          setGlobalAuthToken(null);
-          setSession(null);
+          // トークンが無効な場合はクリア (ただし、ネットワークエラー等は除く)
+          // status が 401 (Unauthorized) または 403 (Forbidden) の場合のみログアウト
+          if (response.status === 401 || response.status === 403) {
+            console.log('Session expired or invalid, logging out.');
+            sessionStorage.removeToken();
+            sessionStorage.removeUser();
+            setGlobalAuthToken(null);
+            setSession(null);
+          } else {
+            console.warn('Session verification failed but keeping local session (likely network error or server error). Status:', response.status);
+            // オフライン時など、セッションを維持する
+          }
         }
       }
     } catch (error) {
@@ -71,13 +78,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (emailOrName: string, password: string) => {
     try {
       const response = await authApi.signIn({ emailOrName, password });
-      
+
       if (!response.success) {
         throw new Error(response.error || 'ログインに失敗しました');
       }
-      
+
       const { user, token } = response.data!;
-      
+
       // トークンとユーザー情報を保存
       if (token) {
         sessionStorage.setToken(token);
@@ -85,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       sessionStorage.setUser(user);
       setSession(user);
-      
+
       toast.success(`ようこそ、${user.name}さん`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'ログインに失敗しました';
@@ -100,32 +107,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!validateEmail(email)) {
         throw new Error('有効なメールアドレスを入力してください');
       }
-      
+
       const passwordValidation = validatePasswordStrength(password);
       if (!passwordValidation.isValid) {
         throw new Error(`パスワードが要件を満たしていません:\n${passwordValidation.errors.join('\n')}`);
       }
-      
+
       if (name.trim().length < 2) {
         throw new Error('名前は2文字以上で入力してください');
       }
-      
+
       const response = await authApi.signUp({ email, password, name });
-      
+
       if (!response.success) {
         throw new Error(response.error || 'アカウント作成に失敗しました');
       }
-      
-      const { user, token } = response.data!;
-      
-      // FileSystemのモックストレージにユーザーを追加
-      fileSystemApi.addUserToMockStorage({
-        id: user.id,
-        name: user.name,
-        role: user.role,
-        isActive: true
-      });
-      
+
+      const { user } = response.data!;
+
       toast.success('アカウントが正常に作成されました');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'アカウント作成に失敗しました';
@@ -137,12 +136,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       await authApi.signOut();
-      
+
       sessionStorage.removeToken();
       sessionStorage.removeUser();
       setGlobalAuthToken(null);
       setSession(null);
-      
+
       toast.success('ログアウトしました');
     } catch (error) {
       toast.error('ログアウトに失敗しました');
@@ -153,13 +152,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetPassword = async (email: string): Promise<string> => {
     try {
       const response = await authApi.resetPassword(email);
-      
+
       if (!response.success) {
         throw new Error(response.error || 'パスワードのリセットに失敗しました');
       }
-      
+
       const tempPassword = response.data?.tempPassword || '';
-      
+
       if (tempPassword) {
         toast.success(`一時パスワードが生成されました: ${tempPassword}`, {
           duration: 10000
@@ -167,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         toast.success('パスワードリセットのメールを送信しました');
       }
-      
+
       return tempPassword;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'パスワードのリセットに失敗しました';
@@ -183,13 +182,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!passwordValidation.isValid) {
         throw new Error(`新しいパスワードが要件を満たしていません:\n${passwordValidation.errors.join('\n')}`);
       }
-      
+
       const response = await authApi.changePassword(currentPassword, newPassword);
-      
+
       if (!response.success) {
         throw new Error(response.error || 'パスワード変更に失敗しました');
       }
-      
+
       toast.success('パスワードが正常に変更されました');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'パスワード変更に失敗しました';
@@ -199,15 +198,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      session, 
-      loading, 
-      signIn, 
-      signUp, 
-      signOut, 
-      resetPassword, 
+    <AuthContext.Provider value={{
+      session,
+      loading,
+      signIn,
+      signUp,
+      signOut,
+      resetPassword,
       changePassword,
-      refreshSession 
+      refreshSession
     }}>
       {children}
     </AuthContext.Provider>
@@ -227,11 +226,4 @@ export const notifyUserChanges = () => {
   // 現在は何もしない（APIベースになったため）
 };
 
-export const addUserToStorage = (id: string, name: string, role: 'admin' | 'user') => {
-  fileSystemApi.addUserToMockStorage({
-    id,
-    name,
-    role,
-    isActive: true
-  });
-};
+

@@ -1,5 +1,5 @@
 // 権限階層: super_admin > branch_admin > department_admin > user
-export type UserRole = 'super_admin' | 'branch_admin' | 'department_admin' | 'user';
+export type UserRole = 'super_admin' | 'branch_admin' | 'department_admin' | 'user' | 'admin';
 
 export interface User {
   id: string;
@@ -17,7 +17,7 @@ export interface User {
 
 // 権限チェック用ヘルパー
 export const isAdmin = (role: UserRole): boolean => {
-  return ['super_admin', 'branch_admin', 'department_admin'].includes(role);
+  return ['super_admin', 'branch_admin', 'department_admin', 'admin'].includes(role);
 };
 
 export const isSuperAdmin = (role: UserRole): boolean => {
@@ -37,7 +37,8 @@ export const getRoleLabel = (role: UserRole): string => {
     super_admin: '全権管理者',
     branch_admin: '営業所管理者',
     department_admin: '部署管理者',
-    user: '一般ユーザー'
+    user: '一般ユーザー',
+    admin: '管理者'
   };
   return labels[role] || role;
 };
@@ -45,6 +46,7 @@ export const getRoleLabel = (role: UserRole): string => {
 export interface Folder {
   id: string;
   name: string;
+  parent_id?: string | null;
   created_by: string;
   created_at: string;
   folder_permissions: { user_id: string }[];

@@ -28,99 +28,8 @@ export interface CreateFileData {
   file?: globalThis.File;
 }
 
-// モックストレージ
-const mockStorage = {
-  users: new Map<string, User>(),
-  folders: new Map<string, Folder>(),
-  files: new Map<string, File>(),
-  branches: new Map<string, Branch>(),
-  departments: new Map<string, Department>(),
-  detailedPermissions: new Map<string, FolderPermissions>(),
-  notices: new Map<string, Notice>()
-};
+// Mock Storage Removed
 
-// ローカルストレージから復元
-const initMockStorage = () => {
-  try {
-    const savedBranches = localStorage.getItem('mock_branches');
-    const savedDepartments = localStorage.getItem('mock_departments');
-    if (savedBranches) {
-      const branches = JSON.parse(savedBranches) as Branch[];
-      branches.forEach(b => mockStorage.branches.set(b.id, b));
-    }
-    if (savedDepartments) {
-      const departments = JSON.parse(savedDepartments) as Department[];
-      departments.forEach(d => mockStorage.departments.set(d.id, d));
-    }
-    const savedPermissions = localStorage.getItem('mock_permissions');
-    if (savedPermissions) {
-      const permissions = JSON.parse(savedPermissions); // Map entries [[key, value], ...]
-      // JSON.stringify(Array.from(map)) creates an array of entries
-      if (Array.isArray(permissions)) {
-        permissions.forEach(([key, value]) => mockStorage.detailedPermissions.set(key, value));
-      }
-    }
-    const savedNotices = localStorage.getItem('mock_notices');
-    if (savedNotices) {
-      const notices = JSON.parse(savedNotices);
-      if (Array.isArray(notices)) {
-        notices.forEach(([key, value]) => mockStorage.notices.set(key, value));
-      }
-    } else {
-      // Initialize default mock notices
-      const MOCK_NOTICES: Notice[] = [
-        { id: '1', title: '【重要】システムメンテナンスのお知らせ', content: '12月20日 22:00～24:00の間、メンテナンスのためシステムが利用できません。', date: '2025/12/10', category: 'maintenance', importance: 'high' },
-        { id: '2', title: '新機能：ファイルプレビューが改善されました', content: 'PDFや画像のプレビューがよりスムーズになりました。', date: '2025/12/12', category: 'update', importance: 'normal' },
-        { id: '3', title: '年末年始の営業について', content: '12月29日～1月3日までサポート窓口は休業となります。', date: '2025/12/01', category: 'info', importance: 'normal' },
-      ];
-      MOCK_NOTICES.forEach(notice => mockStorage.notices.set(notice.id, notice));
-    }
-  } catch (e) {
-    console.error('Failed to restore mock storage', e);
-  }
-};
-
-const saveMockBranches = () => {
-  const branches = Array.from(mockStorage.branches.values());
-  localStorage.setItem('mock_branches', JSON.stringify(branches));
-};
-
-const saveMockDepartments = () => {
-  const departments = Array.from(mockStorage.departments.values());
-  localStorage.setItem('mock_departments', JSON.stringify(departments));
-};
-
-const saveMockPermissions = () => {
-  const permissions = Array.from(mockStorage.detailedPermissions.entries());
-  localStorage.setItem('mock_permissions', JSON.stringify(permissions));
-};
-
-const saveMockUsers = () => {
-  const users = Array.from(mockStorage.users.values());
-  localStorage.setItem('mock_users', JSON.stringify(users));
-};
-
-const saveMockNotices = () => {
-  const notices = Array.from(mockStorage.notices.entries());
-  localStorage.setItem('mock_notices', JSON.stringify(notices));
-};
-
-// ローカルストレージからユーザーも復元
-const initMockUsers = () => {
-  try {
-    const savedUsers = localStorage.getItem('mock_users');
-    if (savedUsers) {
-      const users = JSON.parse(savedUsers) as User[];
-      users.forEach(u => mockStorage.users.set(u.id, u));
-    }
-  } catch (e) {
-    console.error('Failed to restore mock users', e);
-  }
-};
-
-// 初期化
-initMockStorage();
-initMockUsers();
 
 // ファイルシステムAPIクライアント
 export class FileSystemApiClient {
@@ -134,7 +43,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverGetUsers();
       default:
-        return this.mockGetUsers();
+        return { success: true, data: [] };
     }
   }
 
@@ -145,7 +54,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverDeleteUser(userId);
       default:
-        return this.mockDeleteUser(userId);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -163,25 +72,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/users/create.php', data);
       default:
-        // モック実装
-        const branch = data.branch_id ? mockStorage.branches.get(data.branch_id) : null;
-        const department = data.department_id ? mockStorage.departments.get(data.department_id) : null;
-        const newUser: User = {
-          id: data.email, // メールアドレスをIDとして使用
-          name: data.name,
-          email: data.email,
-          role: data.role || 'user',
-          branchId: data.branch_id,
-          branchName: branch?.name,
-          departmentId: data.department_id,
-          departmentName: department?.name,
-          position: data.position,
-          employeeCode: data.employee_code,
-          isActive: true
-        };
-        mockStorage.users.set(newUser.id, newUser);
-        saveMockUsers();
-        return { success: true, data: newUser };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -198,50 +89,19 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/users/update.php', { user_id: userId, ...data });
       default:
-        // モック実装
-        const user = mockStorage.users.get(userId);
-        if (!user) {
-          return { success: false, error: 'ユーザーが見つかりません' };
-        }
-
-        const branch = data.branch_id ? mockStorage.branches.get(data.branch_id) : undefined;
-        const department = data.department_id ? mockStorage.departments.get(data.department_id) : undefined;
-
-        // branch_id/department_id が明示的に渡された場合のみ更新（undefinedなら維持、null/空文字ならクリア）
-        // UIからは '' (空文字) がクリアの意味で渡される
-
-        const updatedUser: User = {
-          ...user,
-          name: data.name || user.name,
-          role: data.role || user.role,
-          isActive: data.is_active !== undefined ? data.is_active : user.isActive,
-        };
-
-        if (data.branch_id !== undefined) {
-          updatedUser.branchId = data.branch_id;
-          updatedUser.branchName = branch?.name;
-        }
-
-        if (data.department_id !== undefined) {
-          updatedUser.departmentId = data.department_id;
-          updatedUser.departmentName = department?.name;
-        }
-
-        mockStorage.users.set(userId, updatedUser);
-        saveMockUsers();
-        return { success: true, data: updatedUser };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
   // === フォルダー管理 ===
-  async getFolders(): Promise<ApiResponse<Folder[]>> {
+  async getFolders(folderId?: string): Promise<ApiResponse<Folder[]>> {
     switch (this.config.backend) {
       case 'supabase':
         return this.supabaseGetFolders();
       case 'xserver':
-        return this.xserverGetFolders();
+        return this.xserverGetFolders(arguments[0]);
       default:
-        return this.mockGetFolders();
+        return { success: true, data: [] };
     }
   }
 
@@ -252,7 +112,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverCreateFolder(data);
       default:
-        return this.mockCreateFolder(data);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -263,7 +123,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverUpdateFolder(data);
       default:
-        return this.mockUpdateFolder(data);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -274,7 +134,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverDeleteFolder(folderId);
       default:
-        return this.mockDeleteFolder(folderId);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -284,7 +144,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.get('/api/notices/list.php');
       default:
-        return this.mockGetNotices();
+        return { success: true, data: [] };
     }
   }
 
@@ -293,7 +153,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/notices/create.php', notice);
       default:
-        return this.mockAddNotice(notice);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -302,7 +162,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/notices/delete.php', { id });
       default:
-        return this.mockDeleteNotice(id);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -313,7 +173,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverUpdateFolderPermissions(data);
       default:
-        return this.mockUpdateFolderPermissions(data);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -325,7 +185,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverGetFiles(folderId);
       default:
-        return this.mockGetFiles(folderId);
+        return { success: true, data: [] };
     }
   }
 
@@ -336,7 +196,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverUploadFile(data);
       default:
-        return this.mockUploadFile(data);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -347,7 +207,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverDeleteFile(fileId);
       default:
-        return this.mockDeleteFile(fileId);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -358,7 +218,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return this.xserverDownloadFile(fileId);
       default:
-        return this.mockDownloadFile(fileId);
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -668,6 +528,17 @@ export class FileSystemApiClient {
     }
   }
 
+  // === ファイル/フォルダ名変更 ===
+  async renameFile(fileId: string, newName: string): Promise<ApiResponse<{ id: string; name: string }>> {
+    switch (this.config.backend) {
+      case 'xserver':
+        return httpClient.post('/api/files/rename.php', { file_id: fileId, name: newName });
+      default:
+        // Mock fallback if needed
+        return { success: false, error: 'Not implemented' };
+    }
+  }
+
   // === ファイルバージョン管理 ===
   async getFileVersions(fileId: string): Promise<ApiResponse<{
     file: { id: string; name: string; type: string; current_size: number };
@@ -734,9 +605,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.get('/api/branches/list.php');
       default:
-        // モック実装
-        const branches = Array.from(mockStorage.branches.values());
-        return { success: true, data: branches };
+        return { success: true, data: [] };
     }
   }
 
@@ -753,24 +622,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/branches/create.php', data);
       default:
-        // モック実装
-        const newBranch: Branch = {
-          id: crypto.randomUUID(),
-          name: data.name,
-          code: data.code,
-          address: data.address,
-          phone: data.phone,
-          managerId: data.managerId,
-          managerName: data.managerName,
-          isActive: true,
-          displayOrder: data.displayOrder || mockStorage.branches.size + 1,
-          userCount: 0,
-          departmentCount: 0,
-          createdAt: new Date().toISOString()
-        };
-        mockStorage.branches.set(newBranch.id, newBranch);
-        saveMockBranches();
-        return { success: true, data: newBranch };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -788,15 +640,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/branches/update.php', { id, ...data });
       default:
-        // モック実装
-        const branch = mockStorage.branches.get(id);
-        if (!branch) {
-          return { success: false, error: '営業所が見つかりません' };
-        }
-        const updatedBranch = { ...branch, ...data };
-        mockStorage.branches.set(id, updatedBranch);
-        saveMockBranches();
-        return { success: true, data: updatedBranch };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -805,10 +649,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/branches/delete.php', { id, force });
       default:
-        // モック実装
-        mockStorage.branches.delete(id);
-        saveMockBranches();
-        return { success: true };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -819,17 +660,7 @@ export class FileSystemApiClient {
         const params = branchId ? `?branch_id=${branchId}` : '';
         return httpClient.get(`/api/departments/list.php${params}`);
       default:
-        // モック実装
-        let departments = Array.from(mockStorage.departments.values());
-        if (branchId) {
-          departments = departments.filter(d => d.branchId === branchId);
-        }
-        // 営業所名を追加
-        departments = departments.map(d => {
-          const branch = d.branchId ? mockStorage.branches.get(d.branchId) : null;
-          return { ...d, branchName: branch?.name };
-        });
-        return { success: true, data: departments };
+        return { success: true, data: [] };
     }
   }
 
@@ -846,24 +677,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/departments/create.php', data);
       default:
-        // モック実装
-        const branch = data.branchId ? mockStorage.branches.get(data.branchId) : null;
-        const newDepartment: Department = {
-          id: crypto.randomUUID(),
-          name: data.name,
-          branchId: data.branchId,
-          branchName: branch?.name,
-          code: data.code,
-          parentId: data.parentId,
-          description: data.description,
-          isActive: true,
-          displayOrder: data.displayOrder || mockStorage.departments.size + 1,
-          userCount: 0,
-          createdAt: new Date().toISOString()
-        };
-        mockStorage.departments.set(newDepartment.id, newDepartment);
-        saveMockDepartments();
-        return { success: true, data: newDepartment };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -881,16 +695,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/departments/update.php', { id, ...data });
       default:
-        // モック実装
-        const department = mockStorage.departments.get(id);
-        if (!department) {
-          return { success: false, error: '部署が見つかりません' };
-        }
-        const branch = data.branchId ? mockStorage.branches.get(data.branchId) : null;
-        const updatedDepartment = { ...department, ...data, branchName: branch?.name || department.branchName };
-        mockStorage.departments.set(id, updatedDepartment);
-        saveMockDepartments();
-        return { success: true, data: updatedDepartment };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -899,10 +704,7 @@ export class FileSystemApiClient {
       case 'xserver':
         return httpClient.post('/api/departments/delete.php', { id, force });
       default:
-        // モック実装
-        mockStorage.departments.delete(id);
-        saveMockDepartments();
-        return { success: true };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -913,31 +715,7 @@ export class FileSystemApiClient {
         return httpClient.get(`/api/folders/permissions-list.php?folder_id=${folderId}`);
       default:
         // モック実装
-        // 保存された詳細権限を返す、なければ空で初期化して返す
-        let perms = mockStorage.detailedPermissions.get(folderId);
-        if (!perms) {
-          // 下位互換性: Folder.folder_permissions から復元を試みる（ユーザーのみ）
-          const folder = mockStorage.folders.get(folderId);
-          perms = { users: [], branches: [], departments: [] };
-          if (folder) {
-            folder.folder_permissions.forEach(fp => {
-              const u = mockStorage.users.get(fp.user_id);
-              if (u) {
-                perms!.users.push({
-                  id: crypto.randomUUID(),
-                  userId: u.id,
-                  userName: u.name,
-                  userEmail: u.email,
-                  permissionLevel: 'view', // デフォルト
-                  createdAt: new Date().toISOString()
-                });
-              }
-            });
-          }
-          mockStorage.detailedPermissions.set(folderId, perms);
-          saveMockPermissions();
-        }
-        return { success: true, data: perms };
+        return { success: true, data: { users: [], branches: [], departments: [] } };
     }
   }
 
@@ -956,93 +734,7 @@ export class FileSystemApiClient {
           permission_level: data.permissionLevel
         });
       default:
-        // モック実装
-        let perms = mockStorage.detailedPermissions.get(data.folderId);
-        if (!perms) {
-          perms = { users: [], branches: [], departments: [] };
-        }
-
-        const id = crypto.randomUUID();
-        let targetName = '';
-
-        if (data.targetType === 'user') {
-          const user = mockStorage.users.get(data.targetId);
-          if (!user) return { success: false, error: 'ユーザーが見つかりません' };
-
-          if (perms.users.some(p => p.userId === data.targetId)) {
-            return { success: false, error: '既に権限が付与されています' };
-          }
-
-          targetName = user.name;
-          perms.users.push({
-            id,
-            userId: user.id,
-            userName: user.name,
-            userEmail: user.email,
-            permissionLevel: data.permissionLevel,
-            createdAt: new Date().toISOString()
-          });
-
-          // FileSystemContext互換性のためFolderオブジェクトも更新
-          const folder = mockStorage.folders.get(data.folderId);
-          if (folder) {
-            if (!folder.folder_permissions.some(p => p.user_id === user.id)) {
-              folder.folder_permissions.push({ user_id: user.id });
-              // Folder update is in-memory reference, so it's updated. 
-              // But we should ensure persistance if we were strict, but folders are persisted elsewhere?
-              // No, mockStorage is in-memory. saveMockFolders is missing but other mockUpdate functions update mockStorage.
-              // We rely on memory for now.
-            }
-          }
-
-        } else if (data.targetType === 'branch') {
-          const branch = mockStorage.branches.get(data.targetId);
-          if (!branch) return { success: false, error: '営業所が見つかりません' };
-
-          if (perms.branches.some(p => p.branchId === data.targetId)) {
-            return { success: false, error: '既に権限が付与されています' };
-          }
-
-          targetName = branch.name;
-          perms.branches.push({
-            id,
-            branchId: branch.id,
-            branchName: branch.name,
-            branchCode: branch.code,
-            permissionLevel: data.permissionLevel,
-            createdAt: new Date().toISOString()
-          });
-        } else if (data.targetType === 'department') {
-          const dept = mockStorage.departments.get(data.targetId);
-          if (!dept) return { success: false, error: '部署が見つかりません' };
-
-          if (perms.departments.some(p => p.departmentId === data.targetId)) {
-            return { success: false, error: '既に権限が付与されています' };
-          }
-
-          targetName = dept.name;
-          perms.departments.push({
-            id,
-            departmentId: dept.id,
-            departmentName: dept.name,
-            departmentCode: dept.code,
-            permissionLevel: data.permissionLevel,
-            createdAt: new Date().toISOString()
-          });
-        }
-
-        mockStorage.detailedPermissions.set(data.folderId, perms);
-        saveMockPermissions();
-
-        return {
-          success: true,
-          data: {
-            targetType: data.targetType,
-            targetId: data.targetId,
-            targetName,
-            permissionLevel: data.permissionLevel
-          }
-        };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -1059,27 +751,7 @@ export class FileSystemApiClient {
           target_id: data.targetId
         });
       default:
-        let perms = mockStorage.detailedPermissions.get(data.folderId);
-        if (!perms) return { success: false, error: '権限が見つかりません' };
-
-        if (data.targetType === 'user') {
-          perms.users = perms.users.filter(p => p.userId !== data.targetId);
-
-          // Folderオブジェクトからも削除
-          const folder = mockStorage.folders.get(data.folderId);
-          if (folder) {
-            folder.folder_permissions = folder.folder_permissions.filter(p => p.user_id !== data.targetId);
-            // mockStorage.folders.set(data.folderId, folder); // Updates ref
-          }
-        } else if (data.targetType === 'branch') {
-          perms.branches = perms.branches.filter(p => p.branchId !== data.targetId);
-        } else if (data.targetType === 'department') {
-          perms.departments = perms.departments.filter(p => p.departmentId !== data.targetId);
-        }
-
-        mockStorage.detailedPermissions.set(data.folderId, perms);
-        saveMockPermissions();
-        return { success: true };
+        return { success: false, error: 'Not implemented' };
     }
   }
 
@@ -1157,7 +829,7 @@ export class FileSystemApiClient {
     return httpClient.delete(`/rest/v1/files?id=eq.${fileId}`);
   }
 
-  private async supabaseDownloadFile(fileId: string): Promise<{ success: boolean; blob?: Blob; filename?: string; error?: string }> {
+  private async supabaseDownloadFile(_fileId: string): Promise<{ success: boolean; blob?: Blob; filename?: string; error?: string }> {
     // Supabaseの場合はStorage APIを使用
     return { success: false, error: 'Not implemented for Supabase' };
   }
@@ -1171,8 +843,9 @@ export class FileSystemApiClient {
     return httpClient.post('/api/users/delete.php', { user_id: userId });
   }
 
-  private async xserverGetFolders(): Promise<ApiResponse<Folder[]>> {
-    return httpClient.get('/api/folders/list.php');
+  private async xserverGetFolders(folderId?: string): Promise<ApiResponse<Folder[]>> {
+    const params = folderId ? `?parent_id=${folderId}` : '';
+    return httpClient.get(`/api/folders/list.php${params}`);
   }
 
   private async xserverCreateFolder(data: CreateFolderData): Promise<ApiResponse<Folder>> {
@@ -1213,7 +886,7 @@ export class FileSystemApiClient {
       formData.append('folder_id', data.folder_id);
       formData.append('created_by', data.created_by);
 
-      return httpClient.postFormData('/api/files/upload.php', formData);
+      return httpClient.postFormData('/api/files/file_upload.php', formData);
     }
 
     return httpClient.post('/api/files/create.php', {
@@ -1226,175 +899,16 @@ export class FileSystemApiClient {
   }
 
   private async xserverDeleteFile(fileId: string): Promise<ApiResponse<void>> {
-    return httpClient.post('/api/files/delete.php', { file_id: fileId });
+    return httpClient.post('/api/files/file_delete.php', { file_id: fileId });
   }
 
   private async xserverDownloadFile(fileId: string): Promise<{ success: boolean; blob?: Blob; filename?: string; error?: string }> {
     return httpClient.downloadFile(`/api/files/download.php?file_id=${fileId}`);
   }
 
-  // === Mock実装 ===
-  private async mockGetUsers(): Promise<ApiResponse<User[]>> {
-    return { success: true, data: Array.from(mockStorage.users.values()) };
-  }
+  // Mock implementation removed
 
-  private async mockDeleteUser(userId: string): Promise<ApiResponse<void>> {
-    mockStorage.users.delete(userId);
 
-    // フォルダ権限からも削除
-    mockStorage.folders.forEach(folder => {
-      folder.folder_permissions = folder.folder_permissions.filter(p => p.user_id !== userId);
-    });
-
-    return { success: true };
-  }
-
-  private async mockGetFolders(): Promise<ApiResponse<Folder[]>> {
-    return { success: true, data: Array.from(mockStorage.folders.values()) };
-  }
-
-  private async mockCreateFolder(data: CreateFolderData): Promise<ApiResponse<Folder>> {
-    const folder: Folder = {
-      id: crypto.randomUUID(),
-      name: data.name,
-      created_by: data.created_by,
-      created_at: new Date().toISOString(),
-      folder_permissions: [{ user_id: data.created_by }]
-    };
-    mockStorage.folders.set(folder.id, folder);
-    return { success: true, data: folder };
-  }
-
-  private async mockUpdateFolder(data: UpdateFolderData): Promise<ApiResponse<Folder>> {
-    const folder = mockStorage.folders.get(data.folder_id);
-    if (!folder) {
-      return { success: false, error: 'フォルダが見つかりません' };
-    }
-    folder.name = data.name;
-    mockStorage.folders.set(data.folder_id, folder);
-    return { success: true, data: folder };
-  }
-
-  private async mockDeleteFolder(folderId: string): Promise<ApiResponse<void>> {
-    mockStorage.folders.delete(folderId);
-
-    // 関連ファイルも削除
-    mockStorage.files.forEach((file, fileId) => {
-      if (file.folder_id === folderId) {
-        mockStorage.files.delete(fileId);
-      }
-    });
-
-    return { success: true };
-  }
-
-  private async mockUpdateFolderPermissions(data: UpdateFolderPermissionsData): Promise<ApiResponse<void>> {
-    const folder = mockStorage.folders.get(data.folder_id);
-    if (!folder) {
-      return { success: false, error: 'フォルダが見つかりません' };
-    }
-
-    if (data.action === 'grant') {
-      if (!folder.folder_permissions.some(p => p.user_id === data.user_id)) {
-        folder.folder_permissions.push({ user_id: data.user_id });
-      }
-    } else {
-      folder.folder_permissions = folder.folder_permissions.filter(p => p.user_id !== data.user_id);
-    }
-
-    mockStorage.folders.set(data.folder_id, folder);
-    return { success: true };
-  }
-
-  private async mockGetFiles(folderId?: string): Promise<ApiResponse<File[]>> {
-    let files = Array.from(mockStorage.files.values());
-    if (folderId) {
-      files = files.filter(f => f.folder_id === folderId);
-    }
-    return { success: true, data: files };
-  }
-
-  private async mockUploadFile(data: CreateFileData): Promise<ApiResponse<File>> {
-    const file: File = {
-      id: crypto.randomUUID(),
-      name: data.name,
-      type: data.type,
-      size: data.size,
-      folder_id: data.folder_id,
-      created_by: data.created_by,
-      storage_path: `${data.folder_id}/${Date.now()}-${data.name}`,
-      created_at: new Date().toISOString()
-    };
-    mockStorage.files.set(file.id, file);
-    return { success: true, data: file };
-  }
-
-  private async mockDeleteFile(fileId: string): Promise<ApiResponse<void>> {
-    mockStorage.files.delete(fileId);
-    return { success: true };
-  }
-
-  private async mockDownloadFile(fileId: string): Promise<{ success: boolean; blob?: Blob; filename?: string; error?: string }> {
-    const file = mockStorage.files.get(fileId);
-    if (!file) {
-      return { success: false, error: 'ファイルが見つかりません' };
-    }
-
-    // モック用のダミーコンテンツ
-    const blob = new Blob(['Mock file content'], { type: 'text/plain' });
-    return { success: true, blob, filename: file.name };
-  }
-
-  // === Notices Mock ===
-  private async mockGetNotices(): Promise<ApiResponse<Notice[]>> {
-    const notices = Array.from(mockStorage.notices.values()).sort((a, b) =>
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    return { success: true, data: notices };
-  }
-
-  private async mockAddNotice(noticeData: Omit<Notice, 'id' | 'date'>): Promise<ApiResponse<Notice>> {
-    const newNotice: Notice = {
-      id: Math.random().toString(36).substr(2, 9),
-      date: new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }),
-      ...noticeData
-    };
-    mockStorage.notices.set(newNotice.id, newNotice);
-    saveMockNotices();
-    return { success: true, data: newNotice };
-  }
-
-  private async mockDeleteNotice(id: string): Promise<ApiResponse<void>> {
-    mockStorage.notices.delete(id);
-    saveMockNotices();
-    return { success: true };
-  }
-
-  // === モックストレージ操作用ヘルパー ===
-  addUserToMockStorage(user: User) {
-    mockStorage.users.set(user.id, user);
-  }
-
-  removeUserFromMockStorage(userId: string) {
-    mockStorage.users.delete(userId);
-  }
-
-  getMockStorage() {
-    return mockStorage;
-  }
-
-  initializeDefaultFolder(userId: string) {
-    if (mockStorage.folders.size === 0) {
-      const defaultFolder: Folder = {
-        id: '1',
-        name: '共有フォルダ',
-        created_by: userId,
-        created_at: new Date().toISOString(),
-        folder_permissions: [{ user_id: userId }]
-      };
-      mockStorage.folders.set(defaultFolder.id, defaultFolder);
-    }
-  }
 }
 
 // グローバルファイルシステムAPIクライアント

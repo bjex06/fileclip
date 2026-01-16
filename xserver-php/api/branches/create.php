@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,9 +27,7 @@ try {
     $payload = authenticateRequest();
 
     // 管理者権限チェック
-    if ($payload['role'] !== 'admin') {
-        throw new Exception('管理者権限が必要です');
-    }
+    requireAdminRole($payload);
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -42,7 +40,7 @@ try {
     $address = isset($input['address']) ? trim($input['address']) : null;
     $phone = isset($input['phone']) ? trim($input['phone']) : null;
     $managerName = isset($input['managerName']) ? trim($input['managerName']) : null;
-    $displayOrder = isset($input['displayOrder']) ? (int)$input['displayOrder'] : 0;
+    $displayOrder = isset($input['displayOrder']) ? (int) $input['displayOrder'] : 0;
 
     if (strlen($name) < 1) {
         throw new Exception('営業所名を入力してください');
@@ -60,12 +58,16 @@ try {
     }
 
     // UUID生成
-    $branchId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+    $branchId = sprintf(
+        '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
         mt_rand(0, 0xffff),
         mt_rand(0, 0x0fff) | 0x4000,
         mt_rand(0, 0x3fff) | 0x8000,
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff)
     );
 
     // 営業所作成
@@ -77,8 +79,8 @@ try {
 
     // アクティビティログ
     $logStmt = $pdo->prepare("
-        INSERT INTO activity_logs (id, user_id, action, resource_type, resource_id, resource_name, ip_address)
-        VALUES (UUID(), ?, 'create_folder', 'branch', ?, ?, ?)
+        INSERT INTO activity_logs (user_id, action, resource_type, resource_id, resource_name, ip_address)
+        VALUES (?, 'create_folder', 'branch', ?, ?, ?)
     ");
     $logStmt->execute([
         $payload['user_id'],

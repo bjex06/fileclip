@@ -107,10 +107,17 @@ your-domain.com/
 `config/database.php`のデータベース接続情報を更新：
 
 ```php
-define('DB_HOST', 'mysql*****.xserver.jp');
-define('DB_NAME', 'your_database_name');
-define('DB_USER', 'your_username');
-define('DB_PASS', 'your_password');
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'kohinata3_fileclip');
+define('DB_USER', 'kohinata3_file'); // または kohinata3_dbuser
+define('DB_PASS', 'your_password'); // 設定したパスワード
+```
+
+**記録されたデータベース情報 (2026-01-08):**
+- データベース名: `kohinata3_fileclip`
+- ユーザー: `kohinata3_dbuser`, `kohinata3_file`
+- バージョン: MariaDB 10.5.x
+- ホスト名: `localhost` (※注意: 接続できない場合はXserverパネルの「MySQLホスト名」を確認してください。例: `mysql****.xserver.jp`)
 ```
 
 ### 4. 初期テーブルの作成

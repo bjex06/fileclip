@@ -443,25 +443,7 @@ const Login: React.FC = () => {
           </p>
         </div>
 
-        {/* デモアカウント情報 */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <h3 className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider flex items-center">
-            <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            デモアカウント
-          </h3>
-          <div className="text-xs text-gray-600 space-y-2">
-            <div className="flex items-center justify-between border-b border-gray-200 pb-1">
-              <span className="font-medium text-gray-700">管理者</span>
-              <code className="bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600 font-mono">admin@example.com / Admin123!</code>
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <span className="font-medium text-gray-700">ユーザー</span>
-              <code className="bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600 font-mono">test@example.com / Test123!</code>
-            </div>
-          </div>
-        </div>
+
       </div>
 
       {/* パスワードリセットモーダル */}

@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, PUT, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -28,9 +28,7 @@ try {
     $payload = authenticateRequest();
 
     // 管理者権限チェック
-    if ($payload['role'] !== 'admin') {
-        throw new Exception('管理者権限が必要です');
-    }
+    requireAdminRole($payload);
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -148,6 +146,12 @@ try {
         $_SERVER['REMOTE_ADDR'] ?? null
     ]);
 
+    // パスワードが変更された場合、本人に通知
+    if (in_array('password_hash = ?', $updates)) {
+        require_once '../../utils/mail.php';
+        sendAdminPasswordUpdateEmail($updatedUser['email'], $updatedUser['name'], $input['password']);
+    }
+
     $response = [
         'status' => 'success',
         'message' => 'ユーザー情報を更新しました',
@@ -157,7 +161,7 @@ try {
             'name' => $updatedUser['name'],
             'role' => $updatedUser['role'],
             'department' => $updatedUser['department'],
-            'isActive' => (bool)$updatedUser['is_active']
+            'isActive' => (bool) $updatedUser['is_active']
         ]
     ];
 

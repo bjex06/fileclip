@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,9 +27,7 @@ try {
     $payload = authenticateRequest();
 
     // 管理者権限チェック
-    if ($payload['role'] !== 'admin') {
-        throw new Exception('管理者権限が必要です');
-    }
+    requireAdminRole($payload);
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -88,8 +86,8 @@ try {
 
         // アクティビティログ
         $logStmt = $pdo->prepare("
-            INSERT INTO activity_logs (id, user_id, action, resource_type, resource_id, resource_name, ip_address)
-            VALUES (UUID(), ?, 'delete', 'department', ?, ?, ?)
+            INSERT INTO activity_logs (user_id, action, resource_type, resource_id, resource_name, ip_address)
+            VALUES (?, 'delete', 'department', ?, ?, ?)
         ");
         $logStmt->execute([
             $payload['user_id'],

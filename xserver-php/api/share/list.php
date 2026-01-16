@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,7 +27,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     $pdo = getDatabaseConnection();
 
@@ -62,7 +64,7 @@ try {
     $shareLinks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // レスポンス用に整形
-    $formattedLinks = array_map(function($link) {
+    $formattedLinks = array_map(function ($link) {
         return [
             'id' => $link['id'],
             'token' => $link['token'],
@@ -72,9 +74,9 @@ try {
             'creator_name' => $link['creator_name'] ?? null,
             'has_password' => !empty($link['password_hash']),
             'expires_at' => $link['expires_at'],
-            'download_count' => (int)$link['download_count'],
-            'max_downloads' => $link['max_downloads'] ? (int)$link['max_downloads'] : null,
-            'is_active' => (bool)$link['is_active'],
+            'download_count' => (int) $link['download_count'],
+            'max_downloads' => $link['max_downloads'] ? (int) $link['max_downloads'] : null,
+            'is_active' => (bool) $link['is_active'],
             'is_expired' => $link['expires_at'] && strtotime($link['expires_at']) < time(),
             'created_at' => $link['created_at']
         ];

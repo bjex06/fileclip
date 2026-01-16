@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -28,7 +28,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -72,15 +74,8 @@ try {
                 unlink($filePath);
             }
 
-            // サムネイルも削除
-            if ($file['thumbnail_path']) {
-                $thumbnailPath = '../../uploads/' . $file['thumbnail_path'];
-                if (file_exists($thumbnailPath)) {
-                    unlink($thumbnailPath);
-                }
-            }
-
-            // バージョン履歴のファイルも削除
+            // バージョン履歴のファイルも削除 (テーブルが存在しないため一時的に無効化)
+            /*
             $stmt = $pdo->prepare("SELECT storage_path FROM file_versions WHERE file_id = ?");
             $stmt->execute([$itemId]);
             $versions = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -94,10 +89,13 @@ try {
             // バージョン履歴を削除
             $stmt = $pdo->prepare("DELETE FROM file_versions WHERE file_id = ?");
             $stmt->execute([$itemId]);
+            */
 
-            // ストレージ使用量を更新
+            // ストレージ使用量を更新 (カラムが存在しないため一時的に無効化)
+            /*
             $stmt = $pdo->prepare("UPDATE users SET storage_used = storage_used - ? WHERE id = ?");
             $stmt->execute([$file['size'], $file['created_by']]);
+            */
 
             // DBから完全削除
             $stmt = $pdo->prepare("DELETE FROM files WHERE id = ?");
@@ -145,7 +143,8 @@ try {
     ]);
 }
 
-function permanentlyDeleteFolder($pdo, $folderId) {
+function permanentlyDeleteFolder($pdo, $folderId)
+{
     // 子フォルダを再帰的に削除
     $stmt = $pdo->prepare("SELECT id FROM folders WHERE parent_id = ?");
     $stmt->execute([$folderId]);
@@ -156,7 +155,7 @@ function permanentlyDeleteFolder($pdo, $folderId) {
     }
 
     // フォルダ内のファイルを削除
-    $stmt = $pdo->prepare("SELECT id, storage_path, thumbnail_path, size, created_by FROM files WHERE folder_id = ?");
+    $stmt = $pdo->prepare("SELECT id, storage_path, size, created_by FROM files WHERE folder_id = ?");
     $stmt->execute([$folderId]);
     $files = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -167,15 +166,8 @@ function permanentlyDeleteFolder($pdo, $folderId) {
             unlink($filePath);
         }
 
-        // サムネイルを削除
-        if ($file['thumbnail_path']) {
-            $thumbnailPath = '../../uploads/' . $file['thumbnail_path'];
-            if (file_exists($thumbnailPath)) {
-                unlink($thumbnailPath);
-            }
-        }
-
-        // バージョン履歴のファイルを削除
+        // バージョン履歴のファイルを削除 (テーブルが存在しないため一時的に無効化)
+        /*
         $stmt2 = $pdo->prepare("SELECT storage_path FROM file_versions WHERE file_id = ?");
         $stmt2->execute([$file['id']]);
         $versions = $stmt2->fetchAll(PDO::FETCH_ASSOC);
@@ -189,10 +181,13 @@ function permanentlyDeleteFolder($pdo, $folderId) {
         // バージョン履歴を削除
         $stmt2 = $pdo->prepare("DELETE FROM file_versions WHERE file_id = ?");
         $stmt2->execute([$file['id']]);
+        */
 
-        // ストレージ使用量を更新
+        // ストレージ使用量を更新 (カラムが存在しないため一時的に無効化)
+        /*
         $stmt2 = $pdo->prepare("UPDATE users SET storage_used = storage_used - ? WHERE id = ?");
         $stmt2->execute([$file['size'], $file['created_by']]);
+        */
     }
 
     // ファイルをDBから削除

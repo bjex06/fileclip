@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -28,7 +28,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -91,18 +93,15 @@ try {
         $stmt->execute([$folderId]);
 
         // アクティビティログを記録
-        $logId = generateUUID();
         $stmt = $pdo->prepare("
-            INSERT INTO activity_logs (id, user_id, action, resource_type, resource_id, resource_name, ip_address, user_agent, created_at)
-            VALUES (?, ?, 'delete', 'folder', ?, ?, ?, ?, NOW())
+            INSERT INTO activity_logs (user_id, action, resource_type, resource_id, resource_name, ip_address, created_at)
+            VALUES (?, 'delete', 'folder', ?, ?, ?, NOW())
         ");
         $stmt->execute([
-            $logId,
             $userId,
             $folderId,
             $folder['name'],
-            $_SERVER['REMOTE_ADDR'] ?? null,
-            $_SERVER['HTTP_USER_AGENT'] ?? null
+            $_SERVER['REMOTE_ADDR'] ?? null
         ]);
 
         $pdo->commit();
@@ -128,7 +127,8 @@ try {
     ]);
 }
 
-function softDeleteSubfolders($pdo, $parentId) {
+function softDeleteSubfolders($pdo, $parentId)
+{
     // 子フォルダを取得
     $stmt = $pdo->prepare("SELECT id FROM folders WHERE parent_id = ? AND is_deleted = FALSE");
     $stmt->execute([$parentId]);
@@ -148,13 +148,18 @@ function softDeleteSubfolders($pdo, $parentId) {
     }
 }
 
-function generateUUID() {
-    return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+function generateUUID()
+{
+    return sprintf(
+        '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
         mt_rand(0, 0xffff),
         mt_rand(0, 0x0fff) | 0x4000,
         mt_rand(0, 0x3fff) | 0x8000,
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff)
     );
 }
 ?>

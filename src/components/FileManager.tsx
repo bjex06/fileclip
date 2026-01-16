@@ -2,9 +2,13 @@ import React from 'react';
 import Header from './Header';
 import FolderPanel from './FolderPanel';
 import FilePanel from './FilePanel';
+import TrashPanel from './TrashPanel';
+import { useFileSystem } from '../context/FileSystemContext';
+import { Trash as TrashPanelIcon } from 'lucide-react';
 
 const FileManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = React.useState('');
+  const { currentFolderId, setCurrentFolder } = useFileSystem();
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50">
@@ -49,13 +53,37 @@ const FileManager: React.FC = () => {
 
         {/* メインコンテンツ: ファイル一覧 */}
         <div className="flex-1 hidden md:block overflow-y-auto min-w-0">
-          <FilePanel searchQuery={searchQuery} />
+          {currentFolderId === 'trash' ? (
+            <TrashPanel />
+          ) : (
+            <FilePanel searchQuery={searchQuery} />
+          )}
         </div>
       </div>
 
-      {/* モバイル表示: ファイル一覧 */}
       <div className="md:hidden px-4 pb-4 flex-1">
-        <FilePanel searchQuery={searchQuery} />
+        {currentFolderId === 'trash' ? (
+          <TrashPanel />
+        ) : (
+          <FilePanel searchQuery={searchQuery} />
+        )}
+      </div>
+
+      {/* Floating Trash Button (Bottom Left) */}
+      <div className="fixed bottom-6 left-6 z-40">
+        <button
+          onClick={() => currentFolderId === 'trash' ? setCurrentFolder(null) : setCurrentFolder('trash')}
+          className={`p-4 rounded-full shadow-lg transition-all transform hover:scale-105 flex items-center justify-center ${currentFolderId === 'trash'
+            ? 'bg-red-600 text-white ring-4 ring-red-200'
+            : 'bg-white text-gray-600 hover:text-red-600 border border-gray-200'
+            }`}
+          title="ゴミ箱"
+        >
+          <div className="relative">
+            <TrashPanelIcon size={24} />
+            {/* You could add a count badge here if available */}
+          </div>
+        </button>
       </div>
     </div>
   );

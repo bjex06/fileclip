@@ -7,7 +7,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -62,17 +62,21 @@ try {
     }
 
     // 権限チェック（管理者またはフォルダ作成者のみ）
-    if ($payload['role'] !== 'admin' && $folder['created_by'] !== $payload['user_id']) {
+    if (!isAdminRole($payload['role']) && $folder['created_by'] !== $payload['user_id']) {
         throw new Exception('権限を変更する権限がありません');
     }
 
     // UUID生成
-    $permId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+    $permId = sprintf(
+        '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
         mt_rand(0, 0xffff),
         mt_rand(0, 0x0fff) | 0x4000,
         mt_rand(0, 0x3fff) | 0x8000,
-        mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff),
+        mt_rand(0, 0xffff)
     );
 
     $targetName = '';
@@ -83,7 +87,8 @@ try {
             $stmt = $pdo->prepare("SELECT id, name FROM users WHERE id = ? AND is_active = 1");
             $stmt->execute([$targetId]);
             $target = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$target) throw new Exception('ユーザーが見つかりません');
+            if (!$target)
+                throw new Exception('ユーザーが見つかりません');
             $targetName = $target['name'];
 
             // 権限付与（UPSERT）
@@ -100,7 +105,8 @@ try {
             $stmt = $pdo->prepare("SELECT id, name FROM branches WHERE id = ? AND is_active = 1");
             $stmt->execute([$targetId]);
             $target = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$target) throw new Exception('営業所が見つかりません');
+            if (!$target)
+                throw new Exception('営業所が見つかりません');
             $targetName = $target['name'];
 
             // 権限付与（UPSERT）
@@ -117,7 +123,8 @@ try {
             $stmt = $pdo->prepare("SELECT id, name FROM departments WHERE id = ? AND is_active = 1");
             $stmt->execute([$targetId]);
             $target = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$target) throw new Exception('部署が見つかりません');
+            if (!$target)
+                throw new Exception('部署が見つかりません');
             $targetName = $target['name'];
 
             // 権限付与（UPSERT）
@@ -130,20 +137,14 @@ try {
             break;
     }
 
-    // アクティビティログ
     $logStmt = $pdo->prepare("
-        INSERT INTO activity_logs (id, user_id, action, resource_type, resource_id, resource_name, details, ip_address)
-        VALUES (UUID(), ?, 'permission_change', 'folder', ?, ?, ?, ?)
+        INSERT INTO activity_logs (user_id, action, resource_type, resource_id, resource_name, ip_address)
+        VALUES (?, 'permission_change', 'folder', ?, ?, ?)
     ");
     $logStmt->execute([
         $payload['user_id'],
         $folderId,
         $targetName,
-        json_encode([
-            'target_type' => $targetType,
-            'target_id' => $targetId,
-            'permission_level' => $permissionLevel
-        ]),
         $_SERVER['REMOTE_ADDR'] ?? null
     ]);
 
@@ -162,6 +163,7 @@ try {
     echo json_encode($response);
 
 } catch (Exception $e) {
+    error_log("Permission Grant Error: " . $e->getMessage());
     http_response_code(400);
     echo json_encode([
         'status' => 'error',

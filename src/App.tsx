@@ -16,6 +16,21 @@ function App() {
         <SecurityManager />
         <PermissionProvider>
           <FileSystemProvider>
+            {/* 通知システム - 最上位に配置して再レンダリングを防ぐ */}
+            <Toaster
+              position="top-right"
+              expand={true}
+              richColors
+              duration={4000}
+              toastOptions={{
+                style: {
+                  background: 'white',
+                  border: '1px solid #e5e7eb',
+                  color: '#374151',
+                },
+              }}
+            />
+
             <Routes>
               {/* パブリックルート（認証済みユーザーはダッシュボードにリダイレクト） */}
               <Route
@@ -50,21 +65,6 @@ function App() {
               {/* 存在しないパスは自動的にダッシュボードにリダイレクト */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-
-            {/* 通知システム */}
-            <Toaster
-              position="top-right"
-              expand={true}
-              richColors
-              duration={4000}
-              toastOptions={{
-                style: {
-                  background: 'white',
-                  border: '1px solid #e5e7eb',
-                  color: '#374151',
-                },
-              }}
-            />
           </FileSystemProvider>
         </PermissionProvider>
       </AuthProvider>

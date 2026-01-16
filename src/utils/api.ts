@@ -1,6 +1,6 @@
 // API設定とアダプター
 
-export type BackendType = 'supabase' | 'xserver' | 'mock';
+export type BackendType = 'supabase' | 'xserver';
 
 export interface ApiConfig {
   backend: BackendType;
@@ -16,8 +16,8 @@ export interface ApiConfig {
 
 // 環境変数から設定を読み取り
 export const getApiConfig = (): ApiConfig => {
-  const backend = (import.meta.env.VITE_BACKEND_TYPE as BackendType) || 'mock';
-  
+  const backend = (import.meta.env.VITE_BACKEND_TYPE as BackendType) || 'xserver';
+
   return {
     backend,
     baseUrl: import.meta.env.VITE_API_BASE_URL,
@@ -37,6 +37,7 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+  status?: number;
 }
 
 // HTTPクライアントの抽象化
@@ -57,23 +58,35 @@ export class HttpClient {
       'Content-Type': 'application/json',
     };
 
-    // 認証トークンを追加
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
-    }
-
     switch (this.config.backend) {
       case 'supabase':
         if (this.config.credentials?.supabaseKey) {
           headers['apikey'] = this.config.credentials.supabaseKey;
           if (!this.authToken) {
             headers['Authorization'] = `Bearer ${this.config.credentials.supabaseKey}`;
+          } else {
+            headers['Authorization'] = `Bearer ${this.authToken}`;
           }
         }
         break;
+
       case 'xserver':
+        // Xserver: Use X-Auth-Token and X-FileClip-Auth to bypass WAF/Anti-Bot blocking
+        if (this.authToken) {
+          const tokenValue = `Bearer ${this.authToken}`;
+          headers['X-Auth-Token'] = tokenValue;
+          headers['X-FileClip-Auth'] = tokenValue;
+        }
+        // Static API Token (if configured, distinct from user session)
         if (this.config.credentials?.apiToken) {
           headers['X-API-Token'] = this.config.credentials.apiToken;
+        }
+        break;
+
+      default:
+        // Default: Standard Authorization header
+        if (this.authToken) {
+          headers['Authorization'] = `Bearer ${this.authToken}`;
         }
         break;
     }
@@ -104,17 +117,19 @@ export class HttpClient {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         return {
           success: false,
-          error: data.error || data.message || 'Request failed'
+          error: data.error || data.message || 'Request failed',
+          status: response.status
         };
       }
 
       return {
         success: true,
-        data: this.transformResponse(data)
+        data: this.transformResponse(data),
+        status: response.status
       };
     } catch (error) {
       return {
@@ -133,7 +148,7 @@ export class HttpClient {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         return {
           success: false,
@@ -157,12 +172,12 @@ export class HttpClient {
   async postFormData<T>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> {
     try {
       const headers: Record<string, string> = {};
-      
+
       // 認証トークンを追加
       if (this.authToken) {
         headers['Authorization'] = `Bearer ${this.authToken}`;
       }
-      
+
       if (this.config.backend === 'xserver' && this.config.credentials?.apiToken) {
         headers['X-API-Token'] = this.config.credentials.apiToken;
       }
@@ -174,7 +189,7 @@ export class HttpClient {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         return {
           success: false,
@@ -204,7 +219,7 @@ export class HttpClient {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         return {
           success: false,
@@ -231,7 +246,7 @@ export class HttpClient {
         method: 'DELETE',
         headers: this.getHeaders(),
       };
-      
+
       if (body) {
         options.body = JSON.stringify(this.transformRequest(body));
       }
@@ -239,7 +254,7 @@ export class HttpClient {
       const response = await fetch(`${this.getBaseUrl()}${endpoint}`, options);
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         return {
           success: false,
@@ -287,7 +302,7 @@ export class HttpClient {
       }
 
       const blob = await response.blob();
-      
+
       return {
         success: true,
         blob,

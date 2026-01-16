@@ -21,8 +21,9 @@ const FolderPanel: React.FC = () => {
 
   // Filter folders based on user permissions
   const accessibleFolders = folders.filter(folder =>
-    folder.folder_permissions.some(p => p.user_id === session?.id) ||
-    folder.created_by === session?.id
+    isAdmin(session?.role as UserRole) || // Check if admin first
+    folder.folder_permissions.some(p => String(p.user_id) === String(session?.id)) ||
+    String(folder.created_by) === String(session?.id)
   );
 
   const handleAddFolder = async () => {
@@ -156,6 +157,8 @@ const FolderPanel: React.FC = () => {
           </div>
         )}
       </div>
+
+
 
       {/* 権限管理モーダル */}
       {permissionModalFolder && (

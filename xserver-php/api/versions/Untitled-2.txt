@@ -1,0 +1,9 @@
+# 
+
+<br />
+<b>Warning</b>:  require_once(../../config/database.php): Failed to open stream: No such file or directory in <b>/home/kohinata3/kohinata3.xsrv.jp/public_html/api/list_safe_root.php</b> on line <b>3</b><br />
+<br />
+<b>Fatal error</b>:  Uncaught Error: Failed opening required '../../config/database.php' (include_path='.:/opt/php-8.1.32-2/data/pear') in /home/kohinata3/kohinata3.xsrv.jp/public_html/api/list_safe_root.php:3
+Stack trace:
+#0 {main}
+  thrown in <b>/home/kohinata3/kohinata3.xsrv.jp/public_html/api/list_safe_root.php</b> on line <b>3</b><br />

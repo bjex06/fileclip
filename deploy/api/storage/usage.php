@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -26,7 +26,7 @@ try {
     // 認証チェック
     $payload = authenticateRequest();
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    $isAdmin = isAdminRole($payload['role']);
 
     $pdo = getDatabaseConnection();
 
@@ -46,7 +46,7 @@ try {
         WHERE created_by = ? AND is_deleted = FALSE
     ");
     $stmt->execute([$userId]);
-    $actualUsed = (int)$stmt->fetch(PDO::FETCH_ASSOC)['total_size'];
+    $actualUsed = (int) $stmt->fetch(PDO::FETCH_ASSOC)['total_size'];
 
     // DBの値と実際の値が異なる場合は更新
     if ($actualUsed != $user['storage_used']) {
@@ -54,7 +54,7 @@ try {
         $stmt->execute([$actualUsed, $userId]);
     }
 
-    $quota = (int)$user['storage_quota'];
+    $quota = (int) $user['storage_quota'];
     $used = $actualUsed;
     $percentage = $quota > 0 ? round(($used / $quota) * 100, 2) : 0;
 
@@ -91,8 +91,8 @@ try {
         $category = $item['category'];
         if (isset($breakdownFormatted[$category])) {
             $breakdownFormatted[$category] = [
-                'size' => (int)$item['total_size'],
-                'count' => (int)$item['file_count']
+                'size' => (int) $item['total_size'],
+                'count' => (int) $item['file_count']
             ];
         }
     }

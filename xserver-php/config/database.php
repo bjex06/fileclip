@@ -5,17 +5,18 @@
 
 // データベース設定
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'your_database_name');
-define('DB_USER', 'your_username');
-define('DB_PASS', 'your_password');
+define('DB_NAME', 'kohinata3_fileclip');
+define('DB_USER', 'kohinata3_file');
+define('DB_PASS', 'fileclip@001');
 define('DB_CHARSET', 'utf8mb4');
 
 /**
  * データベース接続を取得
  */
-function getDatabaseConnection() {
+function getDatabaseConnection()
+{
     static $pdo = null;
-    
+
     if ($pdo === null) {
         try {
             $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
@@ -24,14 +25,14 @@ function getDatabaseConnection() {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ];
-            
+
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         } catch (PDOException $e) {
             error_log("Database connection failed: " . $e->getMessage());
             throw new Exception("Database connection failed");
         }
     }
-    
+
     return $pdo;
 }
 
@@ -39,9 +40,10 @@ function getDatabaseConnection() {
  * データベーステーブル作成SQL
  * 初回セットアップ時に実行
  */
-function createTables() {
+function createTables()
+{
     $pdo = getDatabaseConnection();
-    
+
     // ユーザーテーブル
     $sql = "
     CREATE TABLE IF NOT EXISTS users (
@@ -62,7 +64,7 @@ function createTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ";
     $pdo->exec($sql);
-    
+
     // フォルダーテーブル
     $sql = "
     CREATE TABLE IF NOT EXISTS folders (
@@ -76,7 +78,7 @@ function createTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ";
     $pdo->exec($sql);
-    
+
     // フォルダー権限テーブル
     $sql = "
     CREATE TABLE IF NOT EXISTS folder_permissions (
@@ -92,7 +94,7 @@ function createTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ";
     $pdo->exec($sql);
-    
+
     // ファイルテーブル
     $sql = "
     CREATE TABLE IF NOT EXISTS files (
@@ -113,16 +115,24 @@ function createTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ";
     $pdo->exec($sql);
-    
+
+    // ユーザーテーブルのロール定義を更新（既存のテーブルがある場合用）
+    try {
+        $sql = "ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'branch_admin', 'department_admin', 'user', 'admin') DEFAULT 'user'";
+        $pdo->exec($sql);
+    } catch (Exception $e) {
+        // エラーは無視（既に適用済みの場合など）
+        error_log("Schema update failed or not needed: " . $e->getMessage());
+    }
+
     // デフォルト管理者ユーザーを作成
     $adminEmail = 'admin@example.com';
     $adminPassword = password_hash('Admin123!', PASSWORD_DEFAULT);
     $adminName = 'システム管理者';
-    
-    $sql = "INSERT IGNORE INTO users (email, name, password_hash, role) VALUES (?, ?, ?, 'admin')";
+
+    $sql = "INSERT INTO users (email, name, password_hash, role) VALUES (?, ?, ?, 'super_admin') ON DUPLICATE KEY UPDATE role = 'super_admin'";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$adminEmail, $adminName, $adminPassword]);
-    
+
     echo "Database tables created successfully!\n";
 }
-?>

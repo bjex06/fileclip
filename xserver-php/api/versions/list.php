@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -28,7 +28,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     $fileId = $_GET['file_id'] ?? null;
 
@@ -79,18 +81,18 @@ try {
     $versions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // レスポンス用に整形
-    $formattedVersions = array_map(function($version) {
+    $formattedVersions = array_map(function ($version) {
         return [
-            'id' => (string)$version['id'],
-            'file_id' => (string)$version['file_id'],
-            'version_number' => (int)$version['version_number'],
-            'size' => (int)$version['size'],
+            'id' => (string) $version['id'],
+            'file_id' => (string) $version['file_id'],
+            'version_number' => (int) $version['version_number'],
+            'size' => (int) $version['size'],
             'storage_path' => $version['storage_path'],
             'comment' => $version['comment'],
-            'created_by' => (string)$version['created_by'],
+            'created_by' => (string) $version['created_by'],
             'created_by_name' => $version['created_by_name'],
             'created_at' => $version['created_at'],
-            'is_current' => (bool)$version['is_current']
+            'is_current' => (bool) $version['is_current']
         ];
     }, $versions);
 
@@ -98,10 +100,10 @@ try {
         'status' => 'success',
         'data' => [
             'file' => [
-                'id' => (string)$file['id'],
+                'id' => (string) $file['id'],
                 'name' => $file['name'],
                 'type' => $file['type'],
-                'current_size' => (int)$file['size']
+                'current_size' => (int) $file['size']
             ],
             'versions' => $formattedVersions,
             'total_versions' => count($formattedVersions)

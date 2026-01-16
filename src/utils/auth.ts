@@ -32,7 +32,7 @@ export const generateToken = (user: { id: string; email: string; role: User['rol
 
   const payloadStr = JSON.stringify(payloadObj);
   const payloadEncoded = btoa(encodeURIComponent(payloadStr).replace(/%([0-9A-F]{2})/g,
-    function toSolidBytes(match, p1) {
+    function toSolidBytes(_match, p1) {
       return String.fromCharCode(parseInt(p1, 16));
     }));
 
@@ -48,15 +48,31 @@ export const verifyToken = (token: string): { id: string; email: string; name: s
     if (parts.length !== 3) return null;
 
     // Unicode文字のデコード処理
-    const payloadEncoded = parts[1];
-    const payloadStr = decodeURIComponent(atob(payloadEncoded).split('').map(function (c) {
+    // Base64Url -> Base64変換 ('-' -> '+', '_' -> '/')
+    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    // パディングの追加
+    const pad = base64.length % 4;
+    if (pad) {
+      if (pad === 1) {
+        // 通常ありえないが、念のため
+        throw new Error('Invalid Length');
+      }
+      base64 += new Array(5 - pad).join('=');
+    }
+    const payloadStr = decodeURIComponent(atob(base64).split('').map(function (c) {
       return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
 
     const payload = JSON.parse(payloadStr);
 
     // 期限チェック
-    if (payload.exp < Date.now()) {
+    let exp = payload.exp;
+    // JWTの標準は秒（10桁）だが、JSはミリ秒（13桁）なので、桁数が少ない場合はミリ秒に変換
+    if (exp < 10000000000) {
+      exp *= 1000;
+    }
+
+    if (exp < Date.now()) {
       return null;
     }
 
@@ -74,49 +90,49 @@ export const verifyToken = (token: string): { id: string; email: string; name: s
 // セッションストレージ管理
 export const sessionStorage = {
   setToken: (token: string) => {
-    localStorage.setItem('auth_token', token);
+    localStorage.setItem('fileclip_auth_token', token);
   },
 
   getToken: (): string | null => {
-    return localStorage.getItem('auth_token');
+    return localStorage.getItem('fileclip_auth_token');
   },
 
   removeToken: () => {
-    localStorage.removeItem('auth_token');
+    localStorage.removeItem('fileclip_auth_token');
   },
 
   setUser: (user: User) => {
-    localStorage.setItem('current_user', JSON.stringify(user));
+    localStorage.setItem('fileclip_current_user', JSON.stringify(user));
   },
 
   getUser: (): User | null => {
-    const userData = localStorage.getItem('current_user');
+    const userData = localStorage.getItem('fileclip_current_user');
     return userData ? JSON.parse(userData) : null;
   },
 
   removeUser: () => {
-    localStorage.removeItem('current_user');
+    localStorage.removeItem('fileclip_current_user');
   }
 };
 
 // ログイン試行管理
 export const loginAttempts = {
   getAttempts: (identifier: string): number => {
-    const attempts = localStorage.getItem(`login_attempts_${identifier}`);
+    const attempts = localStorage.getItem(`fileclip_login_attempts_${identifier}`);
     return attempts ? parseInt(attempts) : 0;
   },
 
   incrementAttempts: (identifier: string): number => {
     const current = loginAttempts.getAttempts(identifier);
     const newCount = current + 1;
-    localStorage.setItem(`login_attempts_${identifier}`, newCount.toString());
-    localStorage.setItem(`login_attempts_time_${identifier}`, Date.now().toString());
+    localStorage.setItem(`fileclip_login_attempts_${identifier}`, newCount.toString());
+    localStorage.setItem(`fileclip_login_attempts_time_${identifier}`, Date.now().toString());
     return newCount;
   },
 
   resetAttempts: (identifier: string) => {
-    localStorage.removeItem(`login_attempts_${identifier}`);
-    localStorage.removeItem(`login_attempts_time_${identifier}`);
+    localStorage.removeItem(`fileclip_login_attempts_${identifier}`);
+    localStorage.removeItem(`fileclip_login_attempts_time_${identifier}`);
   },
 
   isLocked: (identifier: string): boolean => {

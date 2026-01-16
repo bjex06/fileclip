@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Building2, Users, Shield, Eye, Edit, Trash2, Plus, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { fileSystemApi } from '../utils/fileSystemApi';
-import { FolderPermissions, PermissionLevel, PermissionTargetType, Branch, Department, User as UserType, UserRole, isAdmin } from '../types';
+import { FolderPermissions, PermissionLevel, PermissionTargetType, Branch, Department, User as UserType, UserRole, isAdmin, isSuperAdmin } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 interface FolderPermissionModalProps {
@@ -12,9 +12,9 @@ interface FolderPermissionModalProps {
 }
 
 const permissionLabels: Record<PermissionLevel, { label: string; icon: React.ReactNode; color: string }> = {
-  view: { label: '閲覧', icon: <Eye size={14} />, color: 'bg-gray-100 text-gray-700' },
-  edit: { label: '編集', icon: <Edit size={14} />, color: 'bg-blue-100 text-blue-700' },
-  manage: { label: '管理', icon: <Shield size={14} />, color: 'bg-purple-100 text-purple-700' }
+  view: { label: '閲覧・DL', icon: <Eye size={14} />, color: 'bg-gray-100 text-gray-700' },
+  edit: { label: '編集・UP', icon: <Edit size={14} />, color: 'bg-blue-100 text-blue-700' },
+  manage: { label: '完全管理', icon: <Shield size={14} />, color: 'bg-purple-100 text-purple-700' }
 };
 
 const FolderPermissionModal: React.FC<FolderPermissionModalProps> = ({ folderId, folderName, onClose }) => {
@@ -150,308 +150,72 @@ const FolderPermissionModal: React.FC<FolderPermissionModalProps> = ({ folderId,
             </h2>
             <p className="text-sm text-gray-500 mt-1">フォルダ: {folderName}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {!showAddForm && isAdmin(session?.role as UserRole) && (
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 flex items-center transition-colors"
+              >
+                <Plus size={16} className="mr-1" />
+                権限を追加
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
-        {/* タブ */}
-        <div className="flex border-b px-4">
-          <button
-            onClick={() => {
-              setActiveTab('users');
-              setAddTargetType('user');
-              setShowAddForm(false);
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'users'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-          >
-            <User size={16} className="inline mr-1" />
-            ユーザー ({permissions.users.length})
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('branches');
-              setAddTargetType('branch');
-              setShowAddForm(false);
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'branches'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-          >
-            <Building2 size={16} className="inline mr-1" />
-            営業所 ({permissions.branches.length})
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('departments');
-              setAddTargetType('department');
-              setShowAddForm(false);
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'departments'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-          >
-            <Users size={16} className="inline mr-1" />
-            部署 ({permissions.departments.length})
-          </button>
-        </div>
+        {/* 追加フォーム (Overlay style) */}
+        {showAddForm ? (
+          <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+            <div className="bg-white rounded-lg border shadow-sm p-4 space-y-4">
+              <div className="flex justify-between items-center border-b pb-2">
+                <h3 className="font-medium">権限の追加</h3>
+                <button onClick={() => setShowAddForm(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={18} />
+                </button>
+              </div>
 
-        {/* コンテンツ */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="text-center py-8 text-gray-500">読み込み中...</div>
-          ) : (
-            <>
-              {/* 全権管理者向けメッセージ */}
-              {session?.role === 'super_admin' && (
-                <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-start">
-                  <Shield size={18} className="text-purple-600 mt-0.5 mr-2 flex-shrink-0" />
-                  <div className="text-sm text-purple-800">
-                    <p className="font-medium">全権管理者としてアクセス中</p>
-                    <p className="mt-1">
-                      あなたは全権管理者のため、このリストの設定に関わらずすべての権限を持っています。
-                      特定のユーザーに権限を明示的に付与したい場合のみ、ここから追加してください。
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* ユーザータブ */}
-              {activeTab === 'users' && (
-                <div className="space-y-3">
-                  {permissions.users.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                      <p className="text-gray-500 mb-2">ユーザー権限がありません</p>
-                      {isAdmin(session?.role as UserRole) && (
-                        <button
-                          onClick={() => {
-                            setAddTargetType('user');
-                            setShowAddForm(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-center w-full"
-                        >
-                          <Plus size={16} className="mr-1" />
-                          ユーザーを追加する
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      {permissions.users.map(perm => (
-                        <div key={perm.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                          <div className="flex items-center">
-                            <User size={18} className="mr-2 text-gray-500" />
-                            <div>
-                              <div className="font-medium">{perm.userName}</div>
-                              {perm.userEmail && (
-                                <div className="text-xs text-gray-500">{perm.userEmail}</div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className={`flex items-center px-2 py-1 rounded text-xs ${permissionLabels[perm.permissionLevel].color}`}>
-                              {permissionLabels[perm.permissionLevel].icon}
-                              <span className="ml-1">{permissionLabels[perm.permissionLevel].label}</span>
-                            </span>
-                            <button
-                              onClick={() => handleRevoke('user', perm.userId, perm.userName)}
-                              className="p-1 hover:bg-red-100 rounded text-red-500"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {!showAddForm && isAdmin(session?.role as UserRole) && (
-                        <button
-                          onClick={() => {
-                            setAddTargetType('user');
-                            setShowAddForm(true);
-                          }}
-                          className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-500 hover:text-blue-500 transition-colors flex items-center justify-center"
-                        >
-                          <Plus size={16} className="mr-1" />
-                          ユーザーを追加
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* 営業所タブ */}
-              {activeTab === 'branches' && (
-                <div className="space-y-3">
-                  {permissions.branches.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                      <p className="text-gray-500 mb-2">営業所権限がありません</p>
-                      {isAdmin(session?.role as UserRole) && (
-                        <button
-                          onClick={() => {
-                            setAddTargetType('branch');
-                            setShowAddForm(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-center w-full"
-                        >
-                          <Plus size={16} className="mr-1" />
-                          営業所を追加する
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      {permissions.branches.map(perm => (
-                        <div key={perm.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                          <div className="flex items-center">
-                            <Building2 size={18} className="mr-2 text-blue-500" />
-                            <div>
-                              <div className="font-medium">{perm.branchName}</div>
-                              {perm.branchCode && (
-                                <div className="text-xs text-gray-500">{perm.branchCode}</div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className={`flex items-center px-2 py-1 rounded text-xs ${permissionLabels[perm.permissionLevel].color}`}>
-                              {permissionLabels[perm.permissionLevel].icon}
-                              <span className="ml-1">{permissionLabels[perm.permissionLevel].label}</span>
-                            </span>
-                            <button
-                              onClick={() => handleRevoke('branch', perm.branchId, perm.branchName)}
-                              className="p-1 hover:bg-red-100 rounded text-red-500"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {!showAddForm && isAdmin(session?.role as UserRole) && (
-                        <button
-                          onClick={() => {
-                            setAddTargetType('branch');
-                            setShowAddForm(true);
-                          }}
-                          className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-500 hover:text-blue-500 transition-colors flex items-center justify-center"
-                        >
-                          <Plus size={16} className="mr-1" />
-                          営業所を追加
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* 部署タブ */}
-              {activeTab === 'departments' && (
-                <div className="space-y-3">
-                  {permissions.departments.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                      <p className="text-gray-500 mb-2">部署権限がありません</p>
-                      {isAdmin(session?.role as UserRole) && (
-                        <button
-                          onClick={() => {
-                            setAddTargetType('department');
-                            setShowAddForm(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-center w-full"
-                        >
-                          <Plus size={16} className="mr-1" />
-                          部署を追加する
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      {permissions.departments.map(perm => (
-                        <div key={perm.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                          <div className="flex items-center">
-                            <Users size={18} className="mr-2 text-green-500" />
-                            <div>
-                              <div className="font-medium">{perm.departmentName}</div>
-                              <div className="text-xs text-gray-500">
-                                {perm.branchName || '全社共通'}
-                                {perm.departmentCode && ` (${perm.departmentCode})`}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className={`flex items-center px-2 py-1 rounded text-xs ${permissionLabels[perm.permissionLevel].color}`}>
-                              {permissionLabels[perm.permissionLevel].icon}
-                              <span className="ml-1">{permissionLabels[perm.permissionLevel].label}</span>
-                            </span>
-                            <button
-                              onClick={() => handleRevoke('department', perm.departmentId, perm.departmentName)}
-                              className="p-1 hover:bg-red-100 rounded text-red-500"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {!showAddForm && isAdmin(session?.role as UserRole) && (
-                        <button
-                          onClick={() => {
-                            setAddTargetType('department');
-                            setShowAddForm(true);
-                          }}
-                          className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-500 hover:text-blue-500 transition-colors flex items-center justify-center"
-                        >
-                          <Plus size={16} className="mr-1" />
-                          部署を追加
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* 追加フォーム */}
-        {showAddForm && (
-          <div className="border-t p-4 bg-gray-50">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
+              <div className="flex items-start gap-4">
                 <div className="w-1/3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">対象タイプ</label>
                   <select
                     value={addTargetType}
                     onChange={(e) => {
                       setAddTargetType(e.target.value as PermissionTargetType);
-                      setAddTargetIds([]); // Clear selection on type change
+                      setAddTargetIds([]);
                     }}
-                    className="w-full px-3 py-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all"
+                    className="w-full px-3 py-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
                   >
-                    <option value="user">ユーザー</option>
-                    <option value="branch">営業所</option>
-                    <option value="department">部署</option>
+                    <option value="user">ユーザー (個別)</option>
+                    <option value="branch">営業所 (全員)</option>
+                    <option value="department">部署 (全員)</option>
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {addTargetType === 'user' && '特定のユーザーのみを指定します'}
+                    {addTargetType === 'branch' && 'その営業所に所属する全員が対象'}
+                    {addTargetType === 'department' && 'その部署に所属する全員が対象'}
+                  </p>
                 </div>
 
-                <div className="w-1/3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">権限</label>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
                   <select
                     value={addPermissionLevel}
                     onChange={(e) => setAddPermissionLevel(e.target.value as PermissionLevel)}
-                    className="w-full px-3 py-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all"
+                    className="w-full px-3 py-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
                   >
-                    <option value="view">閲覧</option>
-                    <option value="edit">編集</option>
-                    <option value="manage">管理</option>
+                    <option value="view">閲覧・ダウンロード (ファイルの閲覧のみ)</option>
+                    <option value="edit">編集・アップロード (ファイルの追加・削除)</option>
+                    <option value="manage">完全管理 (設定変更・フォルダ削除)</option>
                   </select>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-medium text-gray-700">追加する対象を選択 ({addTargetIds.length})</label>
+                  <label className="block text-sm font-medium text-gray-700">対象を選択 ({addTargetIds.length})</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -464,18 +228,19 @@ const FolderPermissionModal: React.FC<FolderPermissionModalProps> = ({ folderId,
                     }}
                     className="text-xs text-blue-600 hover:text-blue-800"
                   >
-                    {addTargetIds.length === getAvailableTargets().length ? 'すべて解除' : 'すべて選択'}
+                    {addTargetIds.length > 0 && addTargetIds.length === getAvailableTargets().length ? 'すべて解除' : 'すべて選択'}
                   </button>
                 </div>
-                <div className="border rounded-md max-h-48 overflow-y-auto bg-white p-2">
+                <div className="border rounded-md max-h-60 overflow-y-auto bg-gray-50 p-2">
                   {getAvailableTargets().length === 0 ? (
-                    <div className="text-center py-4 text-gray-400 text-sm">
-                      追加可能な候補がありません
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      追加可能な候補がありません<br />
+                      <span className="text-xs">(すべての候補に既に権限が付与されています)</span>
                     </div>
                   ) : (
                     <div className="space-y-1">
                       {getAvailableTargets().map((t: any) => (
-                        <label key={t.id} className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer">
+                        <label key={t.id} className="flex items-center p-2 hover:bg-white rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
                           <input
                             type="checkbox"
                             checked={addTargetIds.includes(t.id)}
@@ -488,10 +253,16 @@ const FolderPermissionModal: React.FC<FolderPermissionModalProps> = ({ folderId,
                             }}
                             className="mr-3 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                           />
-                          <span className="text-sm text-gray-700">
-                            {addTargetType === 'user' && t.name}
-                            {addTargetType === 'branch' && `${t.name} ${t.code ? `(${t.code})` : ''}`}
-                            {addTargetType === 'department' && `${t.branchName ? `[${t.branchName}] ` : ''}${t.name}`}
+                          <span className="text-sm text-gray-700 flex-1">
+                            {addTargetType === 'user' && (
+                              <span>{t.name} <span className="text-gray-400 text-xs ml-1">{t.email}</span></span>
+                            )}
+                            {addTargetType === 'branch' && (
+                              <span>{t.name} {t.code && <span className="text-gray-400 text-xs ml-1">({t.code})</span>}</span>
+                            )}
+                            {addTargetType === 'department' && (
+                              <span>{t.branchName ? `[${t.branchName}] ` : ''}{t.name}</span>
+                            )}
                           </span>
                         </label>
                       ))}
@@ -500,17 +271,17 @@ const FolderPermissionModal: React.FC<FolderPermissionModalProps> = ({ folderId,
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t mt-4">
                 <button
                   onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  className="px-4 py-2 bg-white border text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm"
                 >
                   キャンセル
                 </button>
                 <button
                   onClick={handleGrant}
                   disabled={addTargetIds.length === 0}
-                  className={`px-4 py-2 text-white rounded-md flex items-center transition-colors ${addTargetIds.length === 0 ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                  className={`px-4 py-2 text-white rounded-md flex items-center transition-colors text-sm font-medium ${addTargetIds.length === 0 ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                 >
                   <Check size={16} className="mr-1" />
                   {addTargetIds.length > 0 ? `${addTargetIds.length}件を追加` : '追加'}
@@ -518,27 +289,241 @@ const FolderPermissionModal: React.FC<FolderPermissionModalProps> = ({ folderId,
               </div>
             </div>
           </div>
-        )}
+        ) : (
+          <>
+            {/* タブ */}
+            <div className="flex border-b px-4 bg-gray-50/50">
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center ${activeTab === 'users'
+                  ? 'border-blue-600 text-blue-600 bg-white rounded-t-lg'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-t-lg'
+                  }`}
+              >
+                <User size={16} className="mr-2" />
+                ユーザー
+                <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs ${activeTab === 'users' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
+                  {permissions.users.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('branches')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center ${activeTab === 'branches'
+                  ? 'border-blue-600 text-blue-600 bg-white rounded-t-lg'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-t-lg'
+                  }`}
+              >
+                <Building2 size={16} className="mr-2" />
+                営業所
+                <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs ${activeTab === 'branches' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
+                  {permissions.branches.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('departments')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center ${activeTab === 'departments'
+                  ? 'border-blue-600 text-blue-600 bg-white rounded-t-lg'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-t-lg'
+                  }`}
+              >
+                <Users size={16} className="mr-2" />
+                部署
+                <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs ${activeTab === 'departments' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
+                  {permissions.departments.length}
+                </span>
+              </button>
+            </div>
 
-        {/* フッター */}
-        <div className="border-t p-4 flex justify-between">
-          {!showAddForm && isAdmin(session?.role as UserRole) && (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
-            >
-              <Plus size={16} className="mr-1" />
-              権限を追加
-            </button>
-          )}
-          <div className="flex-1" />
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-          >
-            閉じる
-          </button>
-        </div>
+            {/* コンテンツ */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center h-48 text-gray-500">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                  読み込み中...
+                </div>
+              ) : (
+                <>
+                  {/* 全権管理者向けメッセージ */}
+                  {session?.role === 'super_admin' && (
+                    <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-start">
+                      <Shield size={18} className="text-purple-600 mt-0.5 mr-2 flex-shrink-0" />
+                      <div className="text-xs text-purple-800">
+                        <span className="font-bold">全権管理者としてアクセス中:</span> すべての権限を持っています。特定のユーザーに明示的な権限を与える場合のみ追加してください。
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ユーザータブ */}
+                  {activeTab === 'users' && (
+                    <div className="space-y-2">
+                      {/* Super Admins Display */}
+                      {users.filter(u => isSuperAdmin(u.role)).map(admin => (
+                        <div key={admin.id} className="flex items-center justify-between p-3 border border-purple-200 bg-purple-50 rounded-lg">
+                          <div className="flex items-center">
+                            <div className="bg-purple-100 p-2 rounded-full mr-3">
+                              <Shield size={18} className="text-purple-600" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900 flex items-center">
+                                {admin.name}
+                                <span className="ml-2 px-1.5 py-0.5 bg-purple-200 text-purple-700 text-xs rounded-full">全権管理者</span>
+                              </div>
+                              <div className="text-xs text-gray-500">{admin.email}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                              <Shield size={14} />
+                              <span className="ml-1">完全管理 (システム権限)</span>
+                            </span>
+                            <div className="w-8" /> {/* Spacer for alignment */}
+                          </div>
+                        </div>
+                      ))}
+
+                      {permissions.users.length === 0 ? (
+                        <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300 mt-2">
+                          <User size={32} className="mx-auto text-gray-300 mb-2" />
+                          <p className="text-gray-500 mb-1">個別の権限は設定されていません</p>
+                          <p className="text-xs text-gray-400">右上の「権限を追加」ボタンからユーザーを追加できます</p>
+                        </div>
+                      ) : (
+                        permissions.users
+                          .filter(perm => {
+                            // Check if this user is a super admin (already displayed above)
+                            const user = users.find(u => String(u.id) === String(perm.userId));
+                            return !user || !isSuperAdmin(user.role);
+                          })
+                          .map(perm => (
+                            <div key={perm.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors bg-white">
+                              <div className="flex items-center">
+                                <div className="bg-gray-100 p-2 rounded-full mr-3">
+                                  <User size={18} className="text-gray-600" />
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-900">{perm.userName}</div>
+                                  {perm.userEmail && (
+                                    <div className="text-xs text-gray-500">{perm.userEmail}</div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={`flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${permissionLabels[perm.permissionLevel].color}`}>
+                                  {permissionLabels[perm.permissionLevel].icon}
+                                  <span className="ml-1">{permissionLabels[perm.permissionLevel].label}</span>
+                                </span>
+                                <button
+                                  onClick={() => handleRevoke('user', perm.userId, perm.userName)}
+                                  className="p-1.5 hover:bg-red-100 rounded-md text-gray-400 hover:text-red-500 transition-colors"
+                                  title="権限を削除"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* 営業所タブ */}
+                  {activeTab === 'branches' && (
+                    <div className="space-y-2">
+                      {permissions.branches.length === 0 ? (
+                        <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                          <Building2 size={32} className="mx-auto text-gray-300 mb-2" />
+                          <p className="text-gray-500 mb-1">営業所権限は設定されていません</p>
+                          <p className="text-xs text-gray-400">右上の「権限を追加」ボタンから追加できます</p>
+                        </div>
+                      ) : (
+                        permissions.branches.map(perm => (
+                          <div key={perm.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors bg-white">
+                            <div className="flex items-center">
+                              <div className="bg-blue-50 p-2 rounded-full mr-3">
+                                <Building2 size={18} className="text-blue-600" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-gray-900">{perm.branchName}</div>
+                                {perm.branchCode && (
+                                  <div className="text-xs text-gray-500">{perm.branchCode}</div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className={`flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${permissionLabels[perm.permissionLevel].color}`}>
+                                {permissionLabels[perm.permissionLevel].icon}
+                                <span className="ml-1">{permissionLabels[perm.permissionLevel].label}</span>
+                              </span>
+                              <button
+                                onClick={() => handleRevoke('branch', perm.branchId, perm.branchName)}
+                                className="p-1.5 hover:bg-red-100 rounded-md text-gray-400 hover:text-red-500 transition-colors"
+                                title="権限を削除"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* 部署タブ */}
+                  {activeTab === 'departments' && (
+                    <div className="space-y-2">
+                      {permissions.departments.length === 0 ? (
+                        <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                          <Users size={32} className="mx-auto text-gray-300 mb-2" />
+                          <p className="text-gray-500 mb-1">部署権限は設定されていません</p>
+                          <p className="text-xs text-gray-400">右上の「権限を追加」ボタンから追加できます</p>
+                        </div>
+                      ) : (
+                        permissions.departments.map(perm => (
+                          <div key={perm.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors bg-white">
+                            <div className="flex items-center">
+                              <div className="bg-green-50 p-2 rounded-full mr-3">
+                                <Users size={18} className="text-green-600" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-gray-900">{perm.departmentName}</div>
+                                <div className="text-xs text-gray-500">
+                                  {perm.branchName || '全社共通'}
+                                  {perm.departmentCode && ` (${perm.departmentCode})`}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className={`flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${permissionLabels[perm.permissionLevel].color}`}>
+                                {permissionLabels[perm.permissionLevel].icon}
+                                <span className="ml-1">{permissionLabels[perm.permissionLevel].label}</span>
+                              </span>
+                              <button
+                                onClick={() => handleRevoke('department', perm.departmentId, perm.departmentName)}
+                                className="p-1.5 hover:bg-red-100 rounded-md text-gray-400 hover:text-red-500 transition-colors"
+                                title="権限を削除"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {/* フッターなし (追加ボタンはヘッダーに移動) */}
+            <div className="border-t p-3 bg-gray-50 flex justify-end">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

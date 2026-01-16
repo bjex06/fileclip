@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,7 +27,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     $folderId = $_GET['folder_id'] ?? null;
 
@@ -84,9 +86,9 @@ try {
         }
 
         array_unshift($path, [
-            'id' => (string)$folder['id'],
+            'id' => (string) $folder['id'],
             'name' => $folder['name'],
-            'parent_id' => $folder['parent_id'] ? (string)$folder['parent_id'] : null
+            'parent_id' => $folder['parent_id'] ? (string) $folder['parent_id'] : null
         ]);
 
         $currentId = $folder['parent_id'];

@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -26,74 +26,77 @@ require_once '../../utils/validation.php';
 try {
     // 認証チェック
     $payload = authenticateRequest();
-    
+
     // 管理者権限チェック
     requireAdminRole($payload);
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!$input || !isset($input['user_id'])) {
         throw new Exception('ユーザーIDが必要です');
     }
-    
+
     $userId = $input['user_id'];
-    
+
     if (!isValidId($userId)) {
         throw new Exception('無効なユーザーIDです');
     }
-    
+
     // 自分自身を削除しようとしているかチェック
     if ($userId == $payload['user_id']) {
         throw new Exception('自分自身は削除できません');
     }
-    
+
     $pdo = getDatabaseConnection();
-    
+
     // 削除対象ユーザーを取得
     $stmt = $pdo->prepare("SELECT id, role FROM users WHERE id = ?");
     $stmt->execute([$userId]);
     $targetUser = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$targetUser) {
         throw new Exception('ユーザーが見つかりません');
     }
-    
+
     // 管理者を削除しようとしているかチェック
-    if ($targetUser['role'] === 'admin') {
-        throw new Exception('管理者ユーザーは削除できません');
+    if ($targetUser['role'] === 'super_admin' || $targetUser['role'] === 'admin') {
+        // 実行者がsuper_adminでない場合は削除不可
+        if ($payload['role'] !== 'super_admin') {
+            throw new Exception('管理者ユーザーを削除する権限がありません');
+        }
     }
-    
+
     // トランザクション開始
     $pdo->beginTransaction();
-    
+
     try {
         // ユーザーに関連するフォルダ権限を削除
         $stmt = $pdo->prepare("DELETE FROM folder_permissions WHERE user_id = ?");
         $stmt->execute([$userId]);
-        
+
         // ユーザーを論理削除（is_active = 0）
         $stmt = $pdo->prepare("UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = ?");
         $stmt->execute([$userId]);
-        
+
         // または物理削除する場合：
         // $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
         // $stmt->execute([$userId]);
-        
+
         $pdo->commit();
-        
+
         $response = [
             'status' => 'success',
             'message' => 'ユーザーを削除しました'
         ];
-        
+
         http_response_code(200);
         echo json_encode($response);
-        
+
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;
     }
-    
+
 } catch (Exception $e) {
     http_response_code(400);
     echo json_encode([

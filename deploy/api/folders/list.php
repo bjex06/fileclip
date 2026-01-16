@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -29,7 +29,17 @@ try {
     $pdo = getDatabaseConnection();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    $userId = $payload['user_id'];
+
+    // ロールの空白を除去してチェック
+    $userRole = isset($payload['role']) ? trim($payload['role']) : '';
+
+    // super_admin または admin を管理者として扱う
+    // super_admin または admin を管理者として扱う
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
+
+    // デバッグ用: 強制フラグは削除
+    // $isAdmin = true;
 
     $parentId = isset($_GET['parent_id']) ? $_GET['parent_id'] : null;
 
@@ -94,33 +104,34 @@ try {
     }
 
     $folders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // レスポンス用に整形
-    $formattedFolders = array_map(function($folder) {
-        $permissionUserIds = $folder['permission_user_ids'] 
-            ? explode(',', $folder['permission_user_ids']) 
+    $formattedFolders = array_map(function ($folder) {
+        $permissionUserIds = $folder['permission_user_ids']
+            ? explode(',', $folder['permission_user_ids'])
             : [];
-        
+
         return [
-            'id' => (string)$folder['id'],
+            'id' => (string) $folder['id'],
             'name' => $folder['name'],
-            'created_by' => (string)$folder['created_by'],
+            'parent_id' => $folder['parent_id'],
+            'created_by' => (string) $folder['created_by'],
             'creator_name' => $folder['creator_name'],
             'created_at' => $folder['created_at'],
-            'folder_permissions' => array_map(function($uid) {
+            'folder_permissions' => array_map(function ($uid) {
                 return ['user_id' => $uid];
             }, array_unique($permissionUserIds))
         ];
     }, $folders);
-    
+
     $response = [
         'status' => 'success',
         'data' => $formattedFolders
     ];
-    
+
     http_response_code(200);
     echo json_encode($response);
-    
+
 } catch (Exception $e) {
     http_response_code(400);
     echo json_encode([

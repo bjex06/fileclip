@@ -28,6 +28,8 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({ folderId, onClose, in
 
   // Writable folders for selection
   const writableFolders = folders.filter(f =>
+    session?.role === 'super_admin' ||
+    session?.role === 'admin' ||
     f.created_by === session?.id ||
     f.folder_permissions.some(p => p.user_id === session?.id)
   );

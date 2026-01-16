@@ -2,10 +2,11 @@
 /**
  * ファイルプレビューAPI - 画像・動画・音声・PDFのストリーミング
  */
+ob_start();
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,7 +28,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     $fileId = $_GET['file_id'] ?? null;
 
@@ -64,14 +67,75 @@ try {
 
     // プレビュー可能なMIMEタイプかチェック
     $previewableMimeTypes = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp',
-        'video/mp4', 'video/webm', 'video/ogg',
-        'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+        'image/bmp',
+        'video/mp4',
+        'video/webm',
+        'video/ogg',
+        'audio/mpeg',
+        'audio/ogg',
+        'audio/wav',
+        'audio/webm',
         'application/pdf',
-        'text/plain', 'text/html', 'text/css', 'text/javascript', 'application/json', 'application/xml'
+        'text/plain',
+        'text/html',
+        'text/css',
+        'text/javascript',
+        'application/json',
+        'application/xml',
+        // Office Files
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+        'application/msword', // doc
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+        'application/vnd.ms-excel', // xls
+        'text/csv' // csv
     ];
 
     $mimeType = $file['type'] ?: 'application/octet-stream';
+
+    // 簡易タイプ(db由来)を正式なMIMEタイプにマッピング
+    $typeMapping = [
+        // Office
+        'excel' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'word' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'powerpoint' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc' => 'application/msword',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'xls' => 'application/vnd.ms-excel',
+        'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'ppt' => 'application/vnd.ms-powerpoint',
+        'csv' => 'text/csv',
+
+        // Image
+        'image' => 'image/jpeg', // 簡易的フォールバック
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'svg' => 'image/svg+xml',
+
+        // Video/Audio
+        'video' => 'video/mp4',
+        'mp4' => 'video/mp4',
+        'mp3' => 'audio/mpeg',
+
+        // Document
+        'pdf' => 'application/pdf',
+        'txt' => 'text/plain',
+        'text' => 'text/plain'
+    ];
+
+    // DB値がそのままMIMEタイプの場合もあるので、小文字にしてチェック
+    $lowerType = strtolower($mimeType);
+    if (isset($typeMapping[$lowerType])) {
+        $mimeType = $typeMapping[$lowerType];
+    }
 
     // MIMEタイプの部分一致チェック
     $isPreviewable = false;
@@ -118,6 +182,11 @@ try {
         }
     }
 
+    // 不要な出力バッファをクリア（空白などの混入を防ぐ）
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+
     // ヘッダー設定
     header('Content-Type: ' . $mimeType);
     header('Content-Length: ' . $length);
@@ -154,6 +223,12 @@ try {
     exit();
 
 } catch (Exception $e) {
+    $logDir = sys_get_temp_dir();
+    $logFile = $logDir . '/kohinata3_preview_debug.log';
+    if (is_writable($logDir)) {
+        $logEntry = date('Y-m-d H:i:s') . " - Preview Error: " . $e->getMessage() . " FileID: " . ($fileId ?? 'null') . "\n";
+        file_put_contents($logFile, $logEntry, FILE_APPEND);
+    }
     header('Content-Type: application/json');
     http_response_code(400);
     echo json_encode([
@@ -161,4 +236,3 @@ try {
         'error' => $e->getMessage()
     ]);
 }
-?>

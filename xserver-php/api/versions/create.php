@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -28,7 +28,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     // ファイルアップロードチェック
     if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
@@ -165,9 +167,9 @@ try {
             'status' => 'success',
             'message' => 'バージョン ' . $newVersionNumber . ' を作成しました',
             'data' => [
-                'version_id' => (string)$versionId,
+                'version_id' => (string) $versionId,
                 'version_number' => $newVersionNumber,
-                'size' => (int)$uploadedFile['size']
+                'size' => (int) $uploadedFile['size']
             ]
         ];
 

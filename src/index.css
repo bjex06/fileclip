@@ -11,6 +11,19 @@
   animation: fadeIn 0.3s ease-in-out;
 }
 
+@keyframes scrollY {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+.animate-scroll-y {
+  animation: scrollY 30s linear infinite;
+}
+
+.animate-scroll-y:hover {
+  animation-play-state: paused;
+}
+
 body {
   @apply bg-gray-100;
 }

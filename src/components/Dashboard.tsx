@@ -22,13 +22,13 @@ const Dashboard: React.FC<{ onUploadClick: () => void; onFileClick: (file: any) 
     // Filter accessible files
     const accessibleFiles = useMemo(() => {
         const accessibleFolderIds = folders
-            .filter(f => f.folder_permissions.some(p => p.user_id === currentUser?.id) || f.created_by === currentUser?.id)
+            .filter(f => isAdmin || f.folder_permissions.some(p => p.user_id === currentUser?.id) || f.created_by === currentUser?.id)
             .map(f => f.id);
 
         return files
             .filter(file => accessibleFolderIds.includes(file.folder_id))
             .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
-            .slice(0, 5);
+            .slice(0, 20);
     }, [files, folders, currentUser]);
 
     const handleAddNotice = async (e: React.FormEvent) => {
@@ -99,7 +99,10 @@ const Dashboard: React.FC<{ onUploadClick: () => void; onFileClick: (file: any) 
             <div className="flex-1 flex flex-col items-center justify-center min-h-[300px]">
                 <div className="relative group">
                     <div className="absolute inset-0 bg-[#64D2C3]/20 rounded-full blur-xl opacity-50 group-hover:opacity-100 transition-opacity duration-500 animate-pulse-slow"></div>
-                    <div className="relative w-24 h-24 bg-white rounded-full shadow-lg flex items-center justify-center mb-6 border border-gray-100 group-hover:scale-105 transition-transform duration-300">
+                    <div
+                        onClick={onUploadClick}
+                        className="relative w-24 h-24 bg-white rounded-full shadow-lg flex items-center justify-center mb-6 border border-gray-100 group-hover:scale-105 transition-transform duration-300 cursor-pointer"
+                    >
                         <Upload size={40} className="text-[#64D2C3]" />
                     </div>
                 </div>
@@ -257,25 +260,51 @@ const Dashboard: React.FC<{ onUploadClick: () => void; onFileClick: (file: any) 
                     </div>
                     <div className="space-y-3 flex-1">
                         {accessibleFiles.length > 0 ? (
-                            accessibleFiles.map(file => (
-                                <div
-                                    key={file.id}
-                                    onClick={() => onFileClick(file)}
-                                    className="group flex items-center p-2 hover:bg-blue-50/50 rounded-lg transition-colors cursor-pointer"
-                                >
-                                    <div className="p-2 bg-white rounded-lg shadow-sm mr-3 border border-gray-100 group-hover:border-blue-100">
-                                        {getFileIcon(file.type)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
-                                        <p className="text-xs text-gray-500 truncate flex items-center">
-                                            <span className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px] mr-1.5">{getFolderName(file.folder_id)}</span>
-                                            {new Date(file.created_at || '').toLocaleDateString()}
-                                        </p>
-                                    </div>
-                                    <ExternalLink size={14} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <div className="h-[360px] overflow-hidden relative group-list">
+                                <div className={`${accessibleFiles.length > 5 ? 'animate-scroll-y' : ''}`}>
+                                    {/* Original List */}
+                                    {accessibleFiles.map(file => (
+                                        <div
+                                            key={file.id}
+                                            onClick={() => onFileClick(file)}
+                                            className="group flex items-center p-2 hover:bg-blue-50/50 rounded-lg transition-colors cursor-pointer mb-3"
+                                        >
+                                            <div className="p-2 bg-white rounded-lg shadow-sm mr-3 border border-gray-100 group-hover:border-blue-100">
+                                                {getFileIcon(file.type)}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                                <p className="text-xs text-gray-500 truncate flex items-center">
+                                                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px] mr-1.5">{getFolderName(file.folder_id)}</span>
+                                                    {new Date(file.created_at || '').toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                            <ExternalLink size={14} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </div>
+                                    ))}
+
+                                    {/* Duplicate List for Seamless Scrolling if > 5 items */}
+                                    {accessibleFiles.length > 5 && accessibleFiles.map(file => (
+                                        <div
+                                            key={`dup-${file.id}`}
+                                            onClick={() => onFileClick(file)}
+                                            className="group flex items-center p-2 hover:bg-blue-50/50 rounded-lg transition-colors cursor-pointer mb-3"
+                                        >
+                                            <div className="p-2 bg-white rounded-lg shadow-sm mr-3 border border-gray-100 group-hover:border-blue-100">
+                                                {getFileIcon(file.type)}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                                <p className="text-xs text-gray-500 truncate flex items-center">
+                                                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px] mr-1.5">{getFolderName(file.folder_id)}</span>
+                                                    {new Date(file.created_at || '').toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                            <ExternalLink size={14} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </div>
+                                    ))}
                                 </div>
-                            ))
+                            </div>
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-gray-400 text-sm">
                                 <FileIcon size={24} className="mb-2 opacity-50" />

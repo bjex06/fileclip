@@ -26,9 +26,8 @@ const FolderTreeItem: React.FC<{
   return (
     <div>
       <div
-        className={`flex items-center py-1.5 px-2 cursor-pointer rounded transition-colors ${
-          isSelected ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
-        }`}
+        className={`flex items-center py-1.5 px-2 cursor-pointer rounded transition-colors ${isSelected ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+          }`}
         style={{ paddingLeft: `${level * 16 + 8}px` }}
         onClick={() => onSelect(node.id)}
       >
@@ -116,13 +115,10 @@ const FolderTree: React.FC<FolderTreeProps> = ({ selectedFolderId, onSelectFolde
     }
 
     try {
-      // 注: APIにparent_idパラメータを追加する必要があります
-      // 現在はルートフォルダのみ取得するAPIなので、将来的に拡張が必要
-      const response = await fileSystemApi.getFolders();
+      // APIにparent_idパラメータを渡して直接子フォルダを取得
+      const response = await fileSystemApi.getFolders(parentId);
       if (response.success && response.data) {
-        // 親IDでフィルター（暫定実装）
         const children = response.data
-          .filter((f: Folder & { parent_id?: string }) => f.parent_id === parentId)
           .map(f => ({
             ...f,
             isExpanded: false,
@@ -208,9 +204,8 @@ const FolderTree: React.FC<FolderTreeProps> = ({ selectedFolderId, onSelectFolde
       <div className="py-2 max-h-[400px] overflow-y-auto">
         {/* ルートへのリンク */}
         <div
-          className={`flex items-center py-1.5 px-3 cursor-pointer rounded mx-2 transition-colors ${
-            selectedFolderId === null ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
-          }`}
+          className={`flex items-center py-1.5 px-3 cursor-pointer rounded mx-2 transition-colors ${selectedFolderId === null ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+            }`}
           onClick={() => onSelectFolder(null)}
         >
           <span className="mr-2">🏠</span>

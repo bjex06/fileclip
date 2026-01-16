@@ -1,8 +1,10 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
-import { User, Folder, File, UserRole, isSuperAdmin, Notice } from '../types';
+import { User, Folder, File, UserRole, Notice } from '../types';
 import { fileSystemApi } from '../utils/fileSystemApi';
+import { getApiConfig } from '../utils/api';
+import { sessionStorage } from '../utils/auth';
 
 interface FileSystemContextProps {
   users: User[];
@@ -23,6 +25,8 @@ interface FileSystemContextProps {
   createUser: (data: { email: string; password: string; name: string; role?: UserRole; branch_id?: string; department_id?: string }) => Promise<void>;
   updateUser: (userId: string, data: { name?: string; email?: string; role?: UserRole; branch_id?: string; department_id?: string; is_active?: boolean; password?: string }) => Promise<void>;
   refreshUsers: () => Promise<void>;
+  refreshFolders: () => Promise<void>;
+  refreshFiles: () => Promise<void>;
   getFileDataUrl: (fileId: string) => string | null;
   notices: Notice[];
   addNotice: (title: string, content: string, category: Notice['category']) => Promise<void>;
@@ -40,49 +44,6 @@ export const useFileSystem = () => {
   return context;
 };
 
-// Mock data storage
-const mockStorage = {
-  users: new Map<string, User>(),
-  folders: new Map<string, Folder>(),
-  files: new Map<string, File>()
-};
-
-// File data storage (blob URLs stored in memory, not localStorage)
-const fileDataStorage = new Map<string, string>();
-
-// Get file data URL
-export const getFileDataUrlFromStorage = (fileId: string): string | null => {
-  return fileDataStorage.get(fileId) || null;
-};
-
-// Subscribe to user changes
-const userSubscriptions = new Set<() => void>();
-
-export const subscribeToUserChanges = (callback: () => void) => {
-  userSubscriptions.add(callback);
-  return () => userSubscriptions.delete(callback);
-};
-
-export const notifyUserChanges = () => {
-  userSubscriptions.forEach(callback => callback());
-};
-
-export const addUserToStorage = (id: string, name: string, role: UserRole, email: string) => {
-  mockStorage.users.set(id, {
-    id,
-    name,
-    email,
-    role,
-    isActive: true
-  });
-  notifyUserChanges();
-};
-
-export const removeUserFromStorage = (userId: string) => {
-  mockStorage.users.delete(userId);
-  notifyUserChanges();
-};
-
 export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { session } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -91,18 +52,59 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
 
-  // Sync mock storage with state
-  const syncStorage = () => {
-    setUsers(Array.from(mockStorage.users.values()));
-    setFolders(Array.from(mockStorage.folders.values()));
-    setFiles(Array.from(mockStorage.files.values()));
+  // Initialize data when session changes
+  useEffect(() => {
+    if (session) {
+      refreshData();
+    } else {
+      setUsers([]);
+      setFolders([]);
+      setFiles([]);
+      setNotices([]);
+    }
+  }, [session]);
+
+  const refreshData = async () => {
+    await Promise.all([
+      refreshUsers(),
+      refreshFolders(),
+      refreshFiles(), // Will fetch for root or current folder
+      fetchNotices()
+    ]);
   };
 
-  // Subscribe to user changes
-  useEffect(() => {
-    const unsubscribe = subscribeToUserChanges(syncStorage);
-    return () => { unsubscribe(); };
-  }, []);
+  const refreshUsers = async () => {
+    try {
+      const response = await fileSystemApi.getUsers();
+      if (response.success && response.data) {
+        setUsers(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to refresh users:', error);
+    }
+  };
+
+  const refreshFolders = async () => {
+    try {
+      const response = await fileSystemApi.getFolders();
+      if (response.success && response.data) {
+        setFolders(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to refresh folders:', error);
+    }
+  };
+
+  const refreshFiles = async () => {
+    try {
+      const response = await fileSystemApi.getFiles(currentFolderId || undefined);
+      if (response.success && response.data) {
+        setFiles(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to refresh files:', error);
+    }
+  };
 
   const fetchNotices = async () => {
     try {
@@ -114,36 +116,6 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
       console.error('Failed to fetch notices:', error);
     }
   };
-
-  // Initialize with mock data when session changes
-  useEffect(() => {
-    if (session) {
-      // Add current user to mock storage if not exists
-      const user: User = {
-        id: session.id,
-        name: session.name,
-        email: session.email,
-        role: session.role,
-        isActive: true
-      };
-      mockStorage.users.set(session.id, user);
-      notifyUserChanges();
-
-      // Initialize folders if none exist
-      if (mockStorage.folders.size === 0) {
-        const defaultFolder: Folder = {
-          id: '1',
-          name: '共有フォルダ',
-          created_by: session.id,
-          created_at: new Date().toISOString(),
-          folder_permissions: [{ user_id: session.id }]
-        };
-        mockStorage.folders.set(defaultFolder.id, defaultFolder);
-        syncStorage();
-      }
-      fetchNotices();
-    }
-  }, [session]);
 
   // Get current user from session
   const currentUser = session ? {
@@ -167,64 +139,67 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     try {
-      const newFolder: Folder = {
-        id: crypto.randomUUID(),
+      const response = await fileSystemApi.createFolder({
         name: folderName,
-        created_by: session.id,
-        created_at: new Date().toISOString(),
-        folder_permissions: [{ user_id: session.id }]
-      };
+        created_by: session.id
+      });
 
-      mockStorage.folders.set(newFolder.id, newFolder);
-      syncStorage();
-      toast.success('フォルダを作成しました');
+      if (response.success) {
+        await refreshFolders();
+        toast.success('フォルダを作成しました');
+      } else {
+        throw new Error(response.error || 'フォルダの作成に失敗しました');
+      }
     } catch (error) {
+      console.error('Failed to create folder:', error);
       toast.error('フォルダの作成に失敗しました');
     }
   };
 
   const deleteFolder = async (folderId: string) => {
     try {
-      mockStorage.folders.delete(folderId);
+      const response = await fileSystemApi.deleteFolder(folderId);
 
-      // Delete associated files
-      const filesToDelete = Array.from(mockStorage.files.values())
-        .filter(file => file.folder_id === folderId);
-
-      filesToDelete.forEach(file => {
-        mockStorage.files.delete(file.id);
-      });
-
-      syncStorage();
-
-      if (currentFolderId === folderId) {
-        setCurrentFolderId(null);
+      if (response.success) {
+        if (currentFolderId === folderId) {
+          setCurrentFolderId(null);
+        }
+        await refreshFolders();
+        toast.success('フォルダを削除しました');
+      } else {
+        throw new Error(response.error || 'フォルダの削除に失敗しました');
       }
-
-      toast.success('フォルダを削除しました');
     } catch (error) {
       toast.error('フォルダの削除に失敗しました');
     }
   };
 
   const updateFolderPermissions = async (folderId: string, userId: string) => {
+    // Current UI seems to toggle permission. 
+    // We need to check if user has permission first.
+    // However, getting permissions for a folder requires checking the folder object or fetching permissions.
+    // The folder object in state has 'folder_permissions'.
+
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    const hasPermission = folder.folder_permissions?.some(p => p.user_id === userId);
+    const action = hasPermission ? 'revoke' : 'grant';
+
     try {
-      const folder = mockStorage.folders.get(folderId);
-      if (!folder) return;
+      const response = await fileSystemApi.updateFolderPermissions({
+        folder_id: folderId,
+        user_id: userId,
+        action
+      });
 
-      const hasPermission = folder.folder_permissions.some(p => p.user_id === userId);
-      const newPermissions = hasPermission
-        ? folder.folder_permissions.filter(p => p.user_id !== userId)
-        : [...folder.folder_permissions, { user_id: userId }];
+      if (response.success) {
+        await refreshFolders();
+        toast.success('権限を更新しました');
+      } else {
+        throw new Error(response.error || '権限の更新に失敗しました');
+      }
 
-      const updatedFolder = {
-        ...folder,
-        folder_permissions: newPermissions
-      };
-
-      mockStorage.folders.set(folderId, updatedFolder);
-      syncStorage();
-      toast.success('権限を更新しました');
     } catch (error) {
       toast.error('権限の更新に失敗しました');
     }
@@ -237,39 +212,21 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     try {
-      const fileId = crypto.randomUUID();
-      const newFile = {
-        id: fileId,
+      const response = await fileSystemApi.uploadFile({
         name: fileName,
         type: fileType,
-        size: file?.size || 0,
         folder_id: folderId,
         created_by: session.id,
-        storage_path: `${folderId}/${Date.now()}-${fileName}`,
-        created_at: new Date().toISOString()
-      };
+        size: file?.size || 0,
+        file: file
+      });
 
-      // Store actual file data if available (wait for it to complete)
-      if (file) {
-        await new Promise<void>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (reader.result) {
-              fileDataStorage.set(fileId, reader.result as string);
-            }
-            resolve();
-          };
-          reader.onerror = () => {
-            console.error('Failed to read file:', fileName);
-            resolve();
-          };
-          reader.readAsDataURL(file);
-        });
+      if (response.success) {
+        await refreshFiles();
+        toast.success('ファイルを追加しました');
+      } else {
+        throw new Error(response.error || 'ファイルの追加に失敗しました');
       }
-
-      mockStorage.files.set(newFile.id, newFile);
-      syncStorage();
-      toast.success('ファイルを追加しました');
     } catch (error) {
       toast.error('ファイルの追加に失敗しました');
     }
@@ -277,79 +234,65 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const deleteFile = async (fileId: string) => {
     try {
-      mockStorage.files.delete(fileId);
-      // Also remove file data
-      fileDataStorage.delete(fileId);
-      syncStorage();
-      toast.success('ファイルを削除しました');
+      const response = await fileSystemApi.deleteFile(fileId);
+      if (response.success) {
+        await refreshFiles();
+        toast.success('ファイルをゴミ箱に移動しました');
+      } else {
+        throw new Error(response.error || 'ファイルの削除に失敗しました');
+      }
     } catch (error) {
+      console.error('Delete error:', error);
       toast.error('ファイルの削除に失敗しました');
     }
   };
 
   const getFileDataUrl = (fileId: string): string | null => {
-    return fileDataStorage.get(fileId) || null;
+    // For Xserver, return the preview API URL
+    const config = getApiConfig();
+    if (config.backend === 'xserver') {
+      const token = sessionStorage.getToken() || '';
+      return `${config.baseUrl}/api/files/preview.php?file_id=${fileId}&token=${token}`;
+    }
+    return null;
   };
 
   const renameFile = async (fileId: string, newName: string) => {
-    if (!newName.trim()) {
-      toast.error('ファイル名を入力してください');
-      return;
-    }
-
     try {
-      const file = mockStorage.files.get(fileId);
-      if (!file) throw new Error('File not found');
-
-      // Preserve file extension if not provided in new name
-      let finalName = newName;
-      if (file.name.includes('.')) {
-        const extension = file.name.split('.').pop();
-        if (extension && !newName.toLowerCase().endsWith(`.${extension.toLowerCase()}`)) {
-          finalName = `${newName}.${extension}`;
-        }
+      const response = await fileSystemApi.renameFile(fileId, newName);
+      if (response.success) {
+        await refreshFiles();
+        toast.success('ファイル名を変更しました');
+      } else {
+        throw new Error(response.error || 'ファイル名の変更に失敗しました');
       }
-
-      const updatedFile = { ...file, name: finalName };
-      mockStorage.files.set(fileId, updatedFile);
-      syncStorage();
-      toast.success('ファイル名を変更しました');
     } catch (error) {
+      console.error('Rename error:', error);
       toast.error('ファイル名の変更に失敗しました');
     }
   };
 
   const downloadFile = async (fileId: string, fileName: string) => {
     try {
-      // Check if we have stored file data
-      const dataUrl = fileDataStorage.get(fileId);
-      let url: string;
-      let shouldRevoke = false;
+      const response = await fileSystemApi.downloadFile(fileId);
+      if (response.success && response.blob) {
+        // Create object URL and trigger download
+        const url = window.URL.createObjectURL(response.blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = response.filename || fileName;
+        document.body.appendChild(a);
+        a.click();
 
-      if (dataUrl) {
-        // Use stored file data
-        url = dataUrl;
-      } else {
-        // Create a dummy blob for demonstration since we don't have real file storage
-        const content = `This is a sample content for ${fileName}.\n\nIn a real application, this would fetch the actual file data from storage.`;
-        const blob = new Blob([content], { type: 'text/plain' });
-        url = window.URL.createObjectURL(blob);
-        shouldRevoke = true;
-      }
-
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-
-      // Cleanup
-      document.body.removeChild(link);
-      if (shouldRevoke) {
+        // Cleanup
         window.URL.revokeObjectURL(url);
-      }
+        document.body.removeChild(a);
 
-      toast.success('ダウンロードを開始しました');
+        toast.success('ダウンロードを開始しました');
+      } else {
+        throw new Error(response.error || 'ダウンロードに失敗しました');
+      }
     } catch (error) {
       toast.error('ダウンロードに失敗しました');
     }
@@ -357,63 +300,36 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const deleteUser = async (userId: string) => {
     try {
-      // 全権管理者を削除しようとした場合はエラー
-      const user = mockStorage.users.get(userId);
-      if (user && isSuperAdmin(user.role as UserRole)) {
-        toast.error('全権管理者は削除できません');
-        return;
-      }
-
-      // 現在ログイン中のユーザーを削除しようとした場合はエラー
+      // Prevent deleting self
       if (userId === currentUser.id) {
         toast.error('ログイン中のユーザーは削除できません');
         return;
       }
 
-      // ユーザーに関連するフォルダの権限を削除
-      Array.from(mockStorage.folders.values()).forEach(folder => {
-        const updatedPermissions = folder.folder_permissions.filter(p => p.user_id !== userId);
-        mockStorage.folders.set(folder.id, {
-          ...folder,
-          folder_permissions: updatedPermissions
-        });
-      });
+      const response = await fileSystemApi.deleteUser(userId);
 
-      // ユーザーを削除
-      removeUserFromStorage(userId);
-      toast.success('ユーザーを削除しました');
-    } catch (error) {
-      toast.error('ユーザーの削除に失敗しました');
-    }
-  };
-
-  // ユーザー一覧を再取得
-  const refreshUsers = async () => {
-    try {
-      const response = await fileSystemApi.getUsers();
-      if (response.success && response.data) {
-        // APIから取得したユーザーでモックストレージを更新
-        mockStorage.users.clear();
-        response.data.forEach(user => {
-          mockStorage.users.set(user.id, user);
-        });
-        syncStorage();
+      if (response.success) {
+        await refreshUsers();
+        toast.success('ユーザーを削除しました');
+      } else {
+        throw new Error(response.error || 'ユーザーの削除に失敗しました');
       }
     } catch (error) {
-      console.error('Failed to refresh users:', error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error('ユーザーの削除に失敗しました');
+      }
     }
   };
+
 
   // 管理者用ユーザー作成
   const createUser = async (data: { email: string; password: string; name: string; role?: UserRole; branch_id?: string; department_id?: string }) => {
     try {
       const response = await fileSystemApi.createUser(data);
-      if (response.success && response.data) {
-        // 新しいユーザーをモックストレージに追加
-        // APIからの完全なユーザーデータを保存
-        const newUser = response.data;
-        mockStorage.users.set(newUser.id, newUser);
-        syncStorage();
+      if (response.success) {
+        await refreshUsers();
         toast.success('ユーザーを作成しました');
       } else {
         throw new Error(response.error || 'ユーザーの作成に失敗しました');
@@ -431,11 +347,8 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
   const updateUser = async (userId: string, data: { name?: string; email?: string; role?: UserRole; branch_id?: string; department_id?: string; is_active?: boolean; password?: string }) => {
     try {
       const response = await fileSystemApi.updateUser(userId, data);
-      if (response.success && response.data) {
-        // 更新されたユーザーをモックストレージに反映
-        const updatedUser = response.data;
-        mockStorage.users.set(updatedUser.id, updatedUser);
-        syncStorage();
+      if (response.success) {
+        await refreshUsers();
         toast.success('ユーザー情報を更新しました');
       } else {
         throw new Error(response.error || 'ユーザーの更新に失敗しました');
@@ -456,11 +369,11 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
         title,
         content,
         category,
-        importance: 'normal' // Default importance
+        importance: 'normal'
       });
       if (response.success) {
-        toast.success('お知らせを追加しました');
         await fetchNotices();
+        toast.success('お知らせを追加しました');
       } else {
         toast.error(response.error || 'お知らせの追加に失敗しました');
       }
@@ -474,8 +387,8 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       const response = await fileSystemApi.deleteNotice(id);
       if (response.success) {
-        toast.success('お知らせを削除しました');
         await fetchNotices();
+        toast.success('お知らせを削除しました');
       } else {
         toast.error(response.error || 'お知らせの削除に失敗しました');
       }
@@ -485,14 +398,26 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
-  const switchUser = (userId: number) => {
-    // This is now handled by auth context
+  const switchUser = (_userId: number) => {
     console.warn('User switching is now handled by authentication');
   };
 
   const setCurrentFolder = (folderId: string | null) => {
     setCurrentFolderId(folderId);
+    // Trigger file refresh for new folder
+    // Uses useEffect to watch currentFolderId? No, need to trigger manually or use useEffect.
+    // In refreshFiles, we use currentFolderId state.
+    // IMPORTANT: State update is async.
+    // We should probably rely on useEffect [currentFolderId] to refresh files.
   };
+
+  // Add useEffect for currentFolderId change
+  useEffect(() => {
+    if (session) {
+      refreshFiles();
+    }
+  }, [currentFolderId]);
+
 
   const value = {
     users,
@@ -513,6 +438,8 @@ export const FileSystemProvider: React.FC<{ children: ReactNode }> = ({ children
     createUser,
     updateUser,
     refreshUsers,
+    refreshFolders,
+    refreshFiles,
     getFileDataUrl,
     notices,
     addNotice,

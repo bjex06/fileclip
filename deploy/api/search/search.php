@@ -6,7 +6,7 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,7 +27,9 @@ try {
     $payload = authenticateRequest();
 
     $userId = $payload['user_id'];
-    $isAdmin = $payload['role'] === 'admin';
+    // super_admin または admin を管理者として扱う
+    $userRole = $payload['role'];
+    $isAdmin = ($userRole === 'super_admin' || $userRole === 'admin');
 
     // パラメータ取得
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -40,15 +42,15 @@ try {
     $type = $input['type'] ?? 'all'; // all, files, folders
     $fileType = $input['file_type'] ?? null; // image, document, video, audio, etc.
     $extensions = isset($input['extensions']) ? (is_array($input['extensions']) ? $input['extensions'] : explode(',', $input['extensions'])) : [];
-    $minSize = isset($input['min_size']) ? (int)$input['min_size'] : null;
-    $maxSize = isset($input['max_size']) ? (int)$input['max_size'] : null;
+    $minSize = isset($input['min_size']) ? (int) $input['min_size'] : null;
+    $maxSize = isset($input['max_size']) ? (int) $input['max_size'] : null;
     $dateFrom = $input['date_from'] ?? null;
     $dateTo = $input['date_to'] ?? null;
     $folderId = $input['folder_id'] ?? null;
     $sortBy = $input['sort_by'] ?? 'created_at'; // name, size, created_at, type
     $sortOrder = strtoupper($input['sort_order'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
-    $limit = min((int)($input['limit'] ?? 50), 100);
-    $offset = (int)($input['offset'] ?? 0);
+    $limit = min((int) ($input['limit'] ?? 50), 100);
+    $offset = (int) ($input['offset'] ?? 0);
 
     $pdo = getDatabaseConnection();
     $results = [
@@ -150,15 +152,15 @@ try {
         $stmt->execute($fileParams);
         $files = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $results['files'] = array_map(function($file) {
+        $results['files'] = array_map(function ($file) {
             return [
-                'id' => (string)$file['id'],
+                'id' => (string) $file['id'],
                 'name' => $file['name'],
                 'type' => $file['type'],
-                'size' => (int)$file['size'],
-                'folder_id' => (string)$file['folder_id'],
+                'size' => (int) $file['size'],
+                'folder_id' => (string) $file['folder_id'],
                 'folder_name' => $file['folder_name'],
-                'created_by' => (string)$file['created_by'],
+                'created_by' => (string) $file['created_by'],
                 'creator_name' => $file['creator_name'],
                 'created_at' => $file['created_at'],
                 'resource_type' => 'file'
@@ -221,13 +223,13 @@ try {
         $stmt->execute($folderParams);
         $folders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $results['folders'] = array_map(function($folder) {
+        $results['folders'] = array_map(function ($folder) {
             return [
-                'id' => (string)$folder['id'],
+                'id' => (string) $folder['id'],
                 'name' => $folder['name'],
-                'parent_id' => $folder['parent_id'] ? (string)$folder['parent_id'] : null,
+                'parent_id' => $folder['parent_id'] ? (string) $folder['parent_id'] : null,
                 'parent_name' => $folder['parent_name'],
-                'created_by' => (string)$folder['created_by'],
+                'created_by' => (string) $folder['created_by'],
                 'creator_name' => $folder['creator_name'],
                 'created_at' => $folder['created_at'],
                 'resource_type' => 'folder'
@@ -259,7 +261,7 @@ try {
         $countSql = "SELECT COUNT(*) FROM files f $countJoin WHERE " . implode(' AND ', $countConditions);
         $stmt = $pdo->prepare($countSql);
         $stmt->execute($countParams);
-        $totalFiles = (int)$stmt->fetchColumn();
+        $totalFiles = (int) $stmt->fetchColumn();
     }
 
     if ($type === 'all' || $type === 'folders') {
@@ -282,7 +284,7 @@ try {
         $countSql = "SELECT COUNT(*) FROM folders fol $countJoin WHERE " . implode(' AND ', $countConditions);
         $stmt = $pdo->prepare($countSql);
         $stmt->execute($countParams);
-        $totalFolders = (int)$stmt->fetchColumn();
+        $totalFolders = (int) $stmt->fetchColumn();
     }
 
     $response = [
